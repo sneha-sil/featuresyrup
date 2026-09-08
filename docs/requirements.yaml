@@ -1,0 +1,23 @@
+name: graphpancake-docs
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.8
+  - pip
+  - pandas
+  - numpy
+  - rdkit
+  - networkx
+  - matplotlib
+  - plotly
+  - pyyaml
+  - tqdm
+  - psutil
+  - regex
+  - setuptools
+  - setuptools-scm
+  - versioningit
+  - pip:
+      - torch
+      - torch-geometric
+
