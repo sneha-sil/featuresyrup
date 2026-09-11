@@ -31,7 +31,6 @@ dependencies = [
     "rdkit",
     "morfeus",
     "dscribe",
-    "qmllib",
     "regex",
     "tqdm",
     "psutil",
