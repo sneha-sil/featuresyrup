@@ -1,4 +1,4 @@
-name: graphpancake-docs
+name: featuresyrup-docs
 channels:
   - conda-forge
 dependencies:
@@ -17,6 +17,14 @@ dependencies:
   - setuptools
   - setuptools-scm
   - versioningit
+  - morfeus
+  - dscribe
+  - sphinx
+  - sphinx-rtd-theme
+  - sphinx-autodoc-typehints
+  - sphinx-design
+  - sphinx-copybutton
+  - myst-parser
   - pip:
       - torch
       - torch-geometric

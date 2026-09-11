@@ -12,24 +12,24 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 
-# Incase the project was not installed
+# In case the project was not installed
 import os
 import sys
 sys.path.insert(0, os.path.abspath('../src'))
 
-import graphpancake
+import featuresyrup
 
 
 # -- Project information -----------------------------------------------------
 
-project = 'graphpancake'
-copyright = ("2025, Sneha Sil")
+project = 'featuresyrup'
+copyright = "2026, Sneha Sil"
 author = 'Sneha Sil'
 
 # The short X.Y version
-version = ''
+version = featuresyrup.__version__
 # The full version, including alpha/beta/rc tags
-release = ''
+release = featuresyrup.__version__
 
 
 # -- General configuration ---------------------------------------------------
@@ -121,7 +121,7 @@ html_css_files = ['custom.css']
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'graphpancakedoc'
+htmlhelp_basename = 'featuresyrupdoc'
 
 
 # -- Options for LaTeX output ------------------------------------------------
@@ -148,8 +148,8 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'graphpancake.tex', 'graphpancake Documentation',
-     'graphpancake', 'manual'),
+    (master_doc, 'featuresyrup.tex', 'featuresyrup Documentation',
+     'featuresyrup', 'manual'),
 ]
 
 
@@ -158,7 +158,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'graphpancake', 'graphpancake Documentation',
+    (master_doc, 'featuresyrup', 'featuresyrup Documentation',
      [author], 1)
 ]
 
@@ -169,8 +169,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'graphpancake', 'graphpancake Documentation',
-     author, 'graphpancake', 'A Python library for generating molecular graphs of small organic molecules from DFT and WFT calculations.',
+    (master_doc, 'featuresyrup', 'featuresyrup Documentation',
+    author, 'featuresyrup', 'A catalyst-specific Python library for N-heterocyclic carbene organocatalysts, built on graphpancake and extended with catalyst descriptors.',
      'Miscellaneous'),
 ]
 

@@ -11,9 +11,9 @@ import subprocess
 import json
 
 TEST_DATA_CONFIG = {
-    "tar_gz_file": "/home/uvx4187/graphpancake_data/SS-07-13_data.tar.gz",
+    "tar_gz_file": "/home/uvx4187/featuresyrup/test_data/SS-07-13_data.tar.gz",
     
-    "labels_csv": "/home/uvx4187/graphpancake_data/SS-07-13_labels.csv",
+    "labels_csv": "/home/uvx4187/featuresyrup/test_data/labels.csv",
     
     "csv_columns": {
         "mol_id": "mol_id",
@@ -211,8 +211,7 @@ class TestCreateDatabase:
     def test_create_database_basic(self, test_database):
         """Test basic database creation."""
         cmd = [
-            "graphpancake", "create-db", str(test_database),
-            "--graph-types", "DFT", "NPA", "NBO", "QM"
+            "graphpancake", "create-db", str(test_database)
         ]
         
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -263,8 +262,7 @@ class TestLoadData:
         """Test loading a single molecule."""
         # Create database first
         subprocess.run([
-            "graphpancake", "create-db", str(test_database),
-            "--graph-types", "DFT", "NPA", "NBO", "QM"
+            "graphpancake", "create-db", str(test_database)
         ], capture_output=True)
         
         # Get sample molecule data
@@ -305,8 +303,7 @@ class TestLoadData:
             "--mol-id", str(mol_id),
             "--xyz-file", str(xyz_file),
             "--shermo-output", str(shermo_file),
-            "--smiles", str(mol_smiles),
-            "--graph-type", "DFT"
+            "--smiles", str(mol_smiles)
         ]
         
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -403,8 +400,7 @@ class TestQueryDatabase:
                     "--mol-id", mol_id,
                     "--xyz-file", str(xyz_file),
                     "--shermo-output", str(shermo_file),
-                    "--smiles", mol_smiles,
-                    "--graph-type", "DFT"
+                    "--smiles", mol_smiles
                 ], capture_output=True)
                 
                 if result.returncode == 0:
@@ -543,7 +539,7 @@ class TestExportMLFeatures:
             "graphpancake", "export-ml",
             "--database", str(populated_database),
             "--output", str(output_dir),
-            "--graph-type", "DFT",
+            "--graph-type", "catalyst",
             "--format", "csv"
         ]
         
@@ -862,8 +858,7 @@ def populated_database(test_database, sample_test_data):
                 "--mol-id", mol_id,
                 "--xyz-file", str(xyz_file),
                 "--shermo-output", str(shermo_file),
-                "--smiles", mol_smiles,
-                "--graph-type", "DFT"
+                "--smiles", mol_smiles
             ], capture_output=True)
             
             if result.returncode == 0:

@@ -1,1 +1,1 @@
-__version__ = "1.0.0+18.g9938c35.dirty"
+from featuresyrup._version import __version__

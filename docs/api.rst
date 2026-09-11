@@ -1,12 +1,12 @@
 API Documentation
 =================
 
-This section provides detailed API reference for all graphpancake modules.
+This section provides detailed API reference for all featuresyrup modules.
 
 Core Classes
 ------------
 
-.. automodule:: graphpancake.classes
+.. automodule:: featuresyrup.classes
    :members:
    :undoc-members:
    :show-inheritance:
@@ -14,7 +14,7 @@ Core Classes
 Data Dictionary Class
 ^^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: graphpancake.classes.DictData
+.. autoclass:: featuresyrup.classes.DictData
    :members:
    :undoc-members:
    :show-inheritance:
@@ -22,7 +22,7 @@ Data Dictionary Class
 Molecular Graph
 ---------------
 
-.. automodule:: graphpancake.graph
+.. automodule:: featuresyrup.graph
    :members:
    :undoc-members:
    :show-inheritance:
@@ -30,7 +30,7 @@ Molecular Graph
 MolecularGraph Class
 ^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: graphpancake.graph.MolecularGraph
+.. autoclass:: featuresyrup.graph.MolecularGraph
    :members:
    :undoc-members:
    :show-inheritance:
@@ -38,7 +38,7 @@ MolecularGraph Class
 Processing Functions
 --------------------
 
-.. automodule:: graphpancake.functions
+.. automodule:: featuresyrup.functions
    :members:
    :undoc-members:
    :show-inheritance:
@@ -46,18 +46,18 @@ Processing Functions
 Key Functions
 ^^^^^^^^^^^^^
 
-.. autofunction:: graphpancake.functions.generate_qm_data_dict
+.. autofunction:: featuresyrup.functions.generate_qm_data_dict
 
-.. autofunction:: graphpancake.functions.parse_shermo_output
+.. autofunction:: featuresyrup.functions.parse_shermo_output
 
-.. autofunction:: graphpancake.functions.parse_janpa_output
+.. autofunction:: featuresyrup.functions.parse_janpa_output
 
-.. autofunction:: graphpancake.functions.parse_nbo_output
+.. autofunction:: featuresyrup.functions.parse_nbo_output
 
 Command Line Interface
 ----------------------
 
-.. automodule:: graphpancake.cli
+.. automodule:: featuresyrup.cli
    :members:
    :undoc-members:
    :show-inheritance:
@@ -65,7 +65,7 @@ Command Line Interface
 CLI Commands
 ^^^^^^^^^^^^
 
-.. autoclass:: graphpancake.cli.graphpancakeCLI
+.. autoclass:: featuresyrup.cli.FeaturesyrupCLI
    :members:
    :undoc-members:
    :show-inheritance:
@@ -76,11 +76,11 @@ Database Operations
 Database Schema
 ^^^^^^^^^^^^^^^
 
-graphpancake creates the following SQLite tables:
+featuresyrup creates the following SQLite tables:
 
 **graphs table:**
   - mol_id: Unique molecule identifier
-  - graph_type: Type of analysis (DFT, NPA, NBO, QM)
+   - graph_type: Catalyst mode label used by the package (``catalyst``)
   - smiles: SMILES string representation
   - formula: Molecular formula
   - num_atoms: Number of atoms
@@ -114,7 +114,7 @@ graphpancake creates the following SQLite tables:
    :toctree: autosummary
    :recursive:
 
-   graphpancake.cli
-   graphpancake.classes
-   graphpancake.graph
-   graphpancake.functions
+   featuresyrup.cli
+   featuresyrup.classes
+   featuresyrup.graph
+   featuresyrup.functions

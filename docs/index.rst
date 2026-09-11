@@ -1,111 +1,55 @@
-.. graphpancake documentation master file, created by
-   sphinx-quickstart on Thu Mar 15 13:55:56 2018.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+featuresyrup documentation
+==========================
 
-graphpancake's documentation
-=========================================
+featuresyrup is a catalyst-specific modification of graphpancake (Sil 2025) designed for the featurization of N-heterocyclic carbene (NHC) organocatalysts. The additional features on top of graphpancake includes: NMR shieldings, IR intensities, FMO energies, Morfeus descriptors, ACSF, SOAP, and Fukui indices. 
 
-**graphpancake** is a Python library for generating molecular graphs of small organic molecules (elements H, B, C, N, O, F, Si, P, S, Cl, Br, I) from electronic structure theory (i.e., DFT and WFT quantum chemistry calculations). 
+The main workflow is:
 
-Outputs from DFT calculations (.xyz coordinates), Natural Population Analysis (NPA) from JANPA, Natural Bond Orbital (NBO) analysis, and thermodynamic data from Shermo are parsed to extract atom (node), bond (edge), and graph-level features.
+- install the package and its chemistry dependencies
+- create a database with ``featuresyrup create-db``
+- load a complete catalyst file set with ``featuresyrup load-data``
+- query, export, or batch process the resulting graph records
 
-Essentially, graphpancake takes three-dimensional data and flattens it into molecular graph representations, because computers haven't taken organic chemistry class.
-
-.. grid:: 2 2 2 2
-
-    .. grid-item-card:: User Guide
-      :margin: 0 3 0 0
-      
-      Comprehensive guide covering all features, with example code.
-
-      .. button-link:: ./user_guide.html
-         :color: primary
-         :outline:
-         :expand:
-
-         To the user guide
-      
-    .. grid-item-card:: API Reference
-      :margin: 0 3 0 0
-      
-      Complete API documentation for all classes and functions.
-
-      .. button-link:: ./api.html
-         :color: primary
-         :outline:
-         :expand:
-
-         To the API reference
-
+The docs below describe the input contract, command-line usage, and the package API.
 
 Getting started
---------------
+---------------
 
-Please refer to the :doc:`user_guide` for complete installation instructions, tutorials, and examples.
-
-Create a complete conda environment with all dependencies:
+Install with conda:
 
 .. code-block:: bash
-   # Clone or download the environment.yml file from the repository
-   curl -O https://raw.githubusercontent.com/sneha-sil/graphpancake/main/environment.yml
 
-   # Create and activate the environment
    conda env create -f environment.yml
-   conda activate graphpancake-env
+   conda activate featuresyrup-env
+   pip install -e .
 
-Alternatively, installation with pip:
-
-.. code-block:: bash
-
-   pip install graphpancake
-
-Single-molecule processing using the command-line interface:
+Or install from pip:
 
 .. code-block:: bash
 
-   python -m graphpancake.cli create-db database_name.db
+   pip install featuresyrup
 
-   python -m graphpancake.cli load-data --database database_name.db --xyz-file pentane.xyz --shermo-output pentane_shermo.txt --janpa-output pentane.JANPA --nbo-output pentane_nbo.out --mol-id pentane_QM --smiles "CCCCCC" --graph-type QM
+The catalyst pipeline depends on RDKit, Morfeus, DScribe, and QMlib, in addition to the standard scientific Python stack.
 
-   # Full list of commands and options available via:
-   python -m graphpancake.cli --help
-
-Batch-processing several molecules using a configurable script:
-
-Batch processing works best when you have a folder or gzip file of hundreds or thousands of data files, with a corresponding CSV of identification names and SMILES strings. Examples are available in the auxiliary graphpancake_data.zip folder available in this repository.
-
-1. Make a copy of config_template.yaml, rename as config.yaml
-2. Adjust file names and operation settings as necessary
-3. Run the script. A database .db file will be created with all of your molecular graph data.
-
-
-Citation & license
-------------
-If you use graphpancake in your research, please cite:
-
-Sil, S., Maskeri, M. A., Scheidt, K.A. 2025. graphpancake: A Python package for representing organic molecules as molecular graphs utilizing electronic structure theory. DOI: 
-
-This work is licensed under the MIT License. See the LICENSE file in the repository root for details.
-
-References
------------
-Neese, F. et al. The ORCA quantum chemistry program package. J. Chem. Phys. 2020, 152, 224108
-
-Nikolaienko et al. JANPA: an open source cross-platform implementation of the Natural Population Analysis on the Java platform, Computational and Theoretical Chemistry 2014, 1050, 15-22, DOI: 10.1016/j.comptc.2014.10.002, http://janpa.sourceforge.net
-
-Glendening, E. D., Landis, C. R., Weinhold, F. NBO 7.0: New vistas in localized and delocalized chemical bonding theory. Journal of Computational Chemistry 2019, 40 (25), 2234-2241. https://doi.org/10.1002/jcc.25873
-
-Tian, L., Qinxue, C., Shermo: A general code for calculating molecular thermodynamic properties, Comput. Theor. Chem. 2021, 1200, 113249 DOI: 10.1016/j.comptc.2021.113249
-
-Acknowledgements
------------------
-Project based on the [Computational Molecular Science Python Cookiecutter](https://github.com/molssi/cookiecutter-cms) version 1.11. Code written with assistance from Claude Sonnet 4.
+Documentation links
+-------------------
 
 .. toctree::
    :maxdepth: 2
-   :hidden:
    :titlesonly:
 
    user_guide
    api
+
+Citations
+---------
+
+If you use featuresyrup in published work, please cite the featuresyrup repository and the upstream tools used to generate the catalyst descriptors. A minimal bibliography is:
+
+- Sil, S., Maskeri, M. A., and Scheidt, K. A. graphpancake: A Python package for representing organic molecules as molecular graphs utilizing electronic structure theory. J. Cheminform. 18, 61 (2026). DOI: 10.5281/zenodo.17553385
+- Jorner, K. morfeus: a Python package for calculating molecular features. Project documentation: https://github.com/digital-chemistry-laboratory/morfeus
+- Himanen, L., Jäger, M. O. J., Vatanen, T., Eriksson, O., and Fellowes, C. DScribe: Library of descriptors for machine learning in materials science. Comput. Phys. Commun. 247, 106949 (2020). DOI: 10.1016/j.cpc.2019.106949
+- Neese, F. et al. The ORCA quantum chemistry program package. J. Chem. Phys. 2020, 152, 224108
+- Nikolaienko et al. JANPA: an open source cross-platform implementation of the Natural Population Analysis on the Java platform, Computational and Theoretical Chemistry 2014, 1050, 15-22, DOI: 10.1016/j.comptc.2014.10.002, http://janpa.sourceforge.net
+- Glendening, E. D., Landis, C. R., Weinhold, F. NBO 7.0: New vistas in localized and delocalized chemical bonding theory. Journal of Computational Chemistry 2019, 40 (25), 2234-2241. https://doi.org/10.1002/jcc.25873
+- Tian, L., Qinxue, C., Shermo: A general code for calculating molecular thermodynamic properties, Comput. Theor. Chem. 2021, 1200, 113249 DOI: 10.1016/j.comptc.2021.113249

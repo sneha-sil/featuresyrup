@@ -5,9 +5,9 @@ build-backend = "setuptools.build_meta"
 # Self-descriptive entries which should always be present
 # https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
 [project]
-name = "graphpancake"
-description = "A Python library for generating molecular graphs of small organic molecules (elements H, B, C, N, O, F, Si, P, S, Cl, Br, I) from electronic structure theory (i.e., DFT and WFT quantum chemistry calculations)"
-version = "1.0.1"
+name = "featuresyrup"
+description = "A catalyst-specific Python library for featurizing N-heterocyclic carbene organocatalysts, built on graphpancake"
+version = "0.0.1"
 readme = "README.md"
 authors = [
     { name = "Sneha Sil", email = "snehasil2029@u.northwestern.edu" }
@@ -29,6 +29,9 @@ dependencies = [
     "matplotlib",
     "pyyaml",
     "rdkit",
+    "morfeus",
+    "dscribe",
+    "qmllib",
     "regex",
     "tqdm",
     "psutil",
@@ -36,12 +39,13 @@ dependencies = [
 ]
 
 [project.urls]
-Source = "https://github.com/sneha-sil/graphpancake"
-Documentation = "https://graphpancake.readthedocs.io/"
-Issues = "https://github.com/sneha-sil/graphpancake/issues"
+Source = "https://github.com/sneha-sil/featuresyrup"
+Documentation = "https://github.com/sneha-sil/featuresyrup/tree/main/docs"
+Issues = "https://github.com/sneha-sil/featuresyrup/issues"
 
 [project.scripts]
-graphpancake = "graphpancake.cli:main"
+featuresyrup = "featuresyrup.cli:main"
+graphpancake = "featuresyrup.cli:main"
 
 [project.optional-dependencies]
 test = [
@@ -86,7 +90,7 @@ where = ["src"]
 # Ref https://setuptools.pypa.io/en/latest/userguide/datafiles.html#package-data
 [tool.setuptools.package-data]
 
-graphpancake = [
+featuresyrup = [
     "py.typed"
 ]
 
@@ -106,4 +110,4 @@ match = ["*"]
 default-tag = "1.0.0"
 
 [tool.versioningit.write]
-file = "src/graphpancake/_version.py"
+file = "src/featuresyrup/_version.py"

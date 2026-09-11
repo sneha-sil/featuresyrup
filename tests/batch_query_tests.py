@@ -15,16 +15,16 @@ from unittest.mock import patch, MagicMock
 # Add the source directory to the path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from graphpancake.batch_processing import BatchProcessor, get_config_value
-from graphpancake.graph import MolecularGraph
-from graphpancake.classes import DictData
-from graphpancake.functions import generate_qm_data_dict
+from featuresyrup.batch_processing import BatchProcessor, get_config_value
+from featuresyrup.graph import MolecularGraph
+from featuresyrup.classes import DictData
+from featuresyrup.functions import generate_qm_data_dict
 
 # Test data configuration - update these paths for your actual test data
 TEST_DATA_CONFIG = {
-    "tar_gz_file": "/home/uvx4187/graphpancake_data/SS-07-13_data.tar.gz",
+    "tar_gz_file": "/home/uvx4187/featuresyrup/test_data/SS-07-13_data.tar.gz",
     
-    "labels_csv": "/home/uvx4187/graphpancake_data/SS-07-13_labels.csv",
+    "labels_csv": "/home/uvx4187/featuresyrup/test_data/labels.csv",
     
     "csv_columns": {
         "mol_id": "mol_id",
@@ -476,7 +476,7 @@ class TestMoleculeMatching:
         
         processor = BatchProcessor(config)
         
-        from graphpancake.batch_processing import MoleculeData
+        from featuresyrup.batch_processing import MoleculeData
         
         mol_data_dft = MoleculeData("mol_001", {})
         mol_data_dft.xyz = Path("/mock/mol_001.xyz")
@@ -512,7 +512,7 @@ class TestMoleculeMatching:
         
         processor = BatchProcessor(config)
         
-        from graphpancake.batch_processing import MoleculeData
+        from featuresyrup.batch_processing import MoleculeData
         
         valid_mol = MoleculeData("mol_001", {})
         valid_mol.xyz = Path("/mock/mol_001.xyz")
