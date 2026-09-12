@@ -913,9 +913,19 @@ class BatchProcessor:
                 mol_id=mol_id,
                 smiles=smiles,
                 xyz_file=mol_dict['xyz'],
+                neutral_output=mol_dict['neutral_output'],
+                cationic_output=mol_dict['cationic_output'],
+                anionic_output=mol_dict['anionic_output'],
+                neutral_nbo=mol_dict['neutral_nbo'],
+                cationic_nbo=mol_dict['cationic_nbo'],
+                anionic_nbo=mol_dict['anionic_nbo'],
+                IR_output=mol_dict['IR_output'],
+                homo_lumo_output=mol_dict['homo_lumo_output'],
                 shermo_output=mol_dict['shermo'],
                 janpa_output=mol_dict['janpa'],
-                nbo_output=mol_dict['nbo']
+                nbo_output=mol_dict['nbo'],
+                nmr_output=mol_dict['nmr_output'],
+                dipole_polarizability_output=mol_dict['dipole_polarizability_output'],
             )
             
             if qm_dict is None:
