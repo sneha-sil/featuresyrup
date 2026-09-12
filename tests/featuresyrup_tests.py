@@ -294,3 +294,33 @@ def test_get_all_catalyst_data_skips_nmr_when_missing(monkeypatch):
     )
 
     assert "NMR_shieldings" not in result
+
+
+def test_get_all_catalyst_data_skips_dipole_when_missing(monkeypatch):
+    monkeypatch.setattr(features_functions, "parse_orbital_energies", lambda *_: {"HOMO": "-1.0", "LUMO": "0.5", "HOMO_LUMO_gap": 1.5})
+    monkeypatch.setattr(features_functions, "calculate_morfeus_descriptors", lambda *_: {"buried_volume": 1.0, "fraction_vbur": 2.0, "free_volume": 3.0, "sasa_area": 4.0, "sasa_volume": 5.0})
+    monkeypatch.setattr(features_functions, "calculate_ACSF_values", lambda *_: {"acsf_features": [1.0]})
+    monkeypatch.setattr(features_functions, "calculate_SOAP_values", lambda *_: {"soap_features": [1.0]})
+    monkeypatch.setattr(features_functions, "get_IR_frequencies", lambda *_: ({"frequencies": [1.0], "eps": [2.0], "intensity": [3.0], "t2": [4.0]}, {"frequencies": {"mean": 1.0, "max": 1.0, "min": 1.0, "std": 0.0, "median": 1.0}, "eps": {"mean": 2.0, "max": 2.0, "min": 2.0, "std": 0.0, "median": 2.0}, "intensity": {"mean": 3.0, "max": 3.0, "min": 3.0, "std": 0.0, "median": 3.0}, "t2": {"mean": 4.0, "max": 4.0, "min": 4.0, "std": 0.0, "median": 4.0}}))
+    monkeypatch.setattr(features_functions, "get_dipole_moment", lambda *_: (_ for _ in ()).throw(AssertionError("dipole parser should not run when the output is missing")))
+    monkeypatch.setattr(features_functions, "get_isotropic_polarizability", lambda *_: (_ for _ in ()).throw(AssertionError("polarizability parser should not run when the output is missing")))
+    monkeypatch.setattr(features_functions, "get_Fukui_indices", lambda *_: {"fukui_indices": {"f_plus": [1.0], "f_minus": [2.0], "f_zero": [1.5]}})
+    monkeypatch.setattr(features_functions, "get_IE_EA", lambda *_: {"ionization_energy": 1.0, "electron_affinity": 2.0, "hardness": 3.0, "chemical_potential": 4.0, "electronegativity": 5.0, "electrophilicity": 6.0})
+
+    result = features_functions.get_all_catalyst_data(
+        "C1=NC=N1",
+        "dummy.xyz",
+        "neutral.out",
+        "cation.out",
+        "anion.out",
+        "neutral_nbo.out",
+        "cation_nbo.out",
+        "anion_nbo.out",
+        None,
+        "ir.out",
+        None,
+        "homo_lumo.out",
+    )
+
+    assert "dipole_moment" not in result
+    assert "polarizability" not in result

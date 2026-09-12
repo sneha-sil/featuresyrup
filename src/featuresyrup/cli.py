@@ -274,7 +274,6 @@ class FeaturesyrupCLI:
             args.anionic_nbo,
             args.nmr_output,
             args.IR_output,
-            args.dipole_polarizability_output,
             args.homo_lumo_output,
         ]
         for file_path in required_files:
@@ -282,6 +281,9 @@ class FeaturesyrupCLI:
                 self.logger.error(f"Required catalyst file not found: {file_path}")
                 return 1
         
+        if args.dipole_polarizability_output and not Path(args.dipole_polarizability_output).exists():
+            self.logger.error(f"Dipole/polarizability output file not found: {args.dipole_polarizability_output}")
+            return 1
         try:
             self.logger.info(f"\t Processing molecule: {args.mol_id}, {args.smiles}")
             qm_data = generate_qm_data_dict(
@@ -296,7 +298,7 @@ class FeaturesyrupCLI:
                 anionic_nbo=args.anionic_nbo,
                 nmr_output=args.nmr_output,
                 IR_output=args.IR_output,
-                dipole_polarizability_output=args.dipole_polarizability_output,
+                dipole_polarizability_output=args.dipole_polarizability_output if args.dipole_polarizability_output else None,
                 homo_lumo_output=args.homo_lumo_output,
                 shermo_output=args.shermo_output,
                 janpa_output=args.janpa_output,
@@ -971,7 +973,7 @@ def main():
     load_parser.add_argument('--anionic-nbo', required=True, type=str, help='Anionic NBO output file')
     load_parser.add_argument('--nmr-output', required=False, default=None, type=str, help='NMR output file (optional)')
     load_parser.add_argument('--IR-output', required=True, type=str, help='IR output file')
-    load_parser.add_argument('--dipole-polarizability-output', required=True, type=str, help='Dipole/polarizability output file')
+    load_parser.add_argument('--dipole-polarizability-output', required=False, default=None, type=str, help='Dipole/polarizability output file (optional)')
     load_parser.add_argument('--homo-lumo-output', required=True, type=str, help='HOMO-LUMO output file')
     load_parser.add_argument('--janpa-output', '-janpa', type=str, help='NPA output file')
     load_parser.add_argument('--nbo-output', '-nbo', type=str, help='NBO output file')
