@@ -80,6 +80,15 @@ def _identify_carbene_center(mol: Optional[Chem.Mol]) -> Optional[Dict[str, Any]
     return None
 
 
+def _carbene_center_index(mol: Optional[Chem.Mol]) -> Optional[int]:
+    carbene_info = _identify_carbene_center(mol)
+    return carbene_info["carbene"] if carbene_info else None
+
+
+def _is_carbene_center(atom_index: int, carbene_index: Optional[int]) -> bool:
+    return carbene_index is not None and atom_index == carbene_index
+
+
 def _default_node_record(atom_index: int, qm_data: "DictData") -> Dict[str, Any]:
     record = {
         "atom_index": atom_index,
@@ -93,12 +102,12 @@ def _default_node_record(atom_index: int, qm_data: "DictData") -> Dict[str, Any]
 
     if qm_data.smiles:
         mol = Chem.MolFromSmiles(qm_data.smiles)
-        carbene_info = _identify_carbene_center(mol) if mol is not None else None
-        carbene_index = carbene_info["carbene"] if carbene_info else None
+        carbene_index = _carbene_center_index(mol) if mol is not None else None
     else:
         carbene_index = None
 
     record.update({
+        "is_carbene_center": _is_carbene_center(atom_index, carbene_index),
         "ACSF_values": _descriptor_for_atom(qm_data.ACSF, atom_index, carbene_index),
         "SOAP_values": _descriptor_for_atom(qm_data.SOAP, atom_index, carbene_index),
     })
@@ -295,6 +304,11 @@ class DictData:
         """Pre-compute all node features once, storing structured data for flexible formatting."""
         if self._node_features_computed or self.atomic_numbers is None or self.num_atoms is None:
             return
+
+        carbene_index = None
+        if self.smiles:
+            mol = Chem.MolFromSmiles(self.smiles)
+            carbene_index = _carbene_center_index(mol) if mol is not None else None
             
         node_data = {
             'atom_indices': list(range(self.num_atoms)),
@@ -304,6 +318,7 @@ class DictData:
             'atomic_masses': self.atomic_masses,
             'electronegativities': self.electronegativities,
             'covalent_radii': self.covalent_radii,
+            'is_carbene_center': [_is_carbene_center(atom_index, carbene_index) for atom_index in range(self.num_atoms)],
         }
         
         if self.graph_type == "NPA":
@@ -766,6 +781,7 @@ class DictData:
                 'atomic_mass': node_data['atomic_masses'][i],
                 'electronegativity': node_data['electronegativities'][i],
                 'covalent_radius': node_data['covalent_radii'][i],
+                'is_carbene_center': node_data.get('is_carbene_center', [False] * num_nodes)[i],
             }
             
             if self.graph_type in ["NPA", "QM"]:
@@ -836,6 +852,7 @@ class DictData:
                 'edge_type': edge_data['edge_types'][i],
                 'bond_order': edge_data['bond_orders'][i],
                 'conventional_bond_order': edge_data['conventional_bond_orders'][i],
+                "is_carbene_center": node_data['is_carbene_center'][i] if node_data.get('is_carbene_center') else False,
                 'num_2C_BDs': edge_data['num_2C_BDs'][i],
                 'bonding_orbital_occupancy': edge_data['bonding_orbital_occupancies'][i],
                 'bonding_orbital_energy': edge_data['bonding_orbital_energies'][i],
@@ -1080,6 +1097,7 @@ class Node(GraphBase):
                 "atomic_mass": node_data['atomic_masses'][i],
                 "electronegativity": node_data['electronegativities'][i],
                 "covalent_radius": node_data['covalent_radii'][i],
+                "is_carbene_center": node_data['is_carbene_center'][i] if node_data.get('is_carbene_center') else False,
             }
             
             if self.graph_type == "NPA":

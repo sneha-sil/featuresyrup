@@ -2326,7 +2326,7 @@ def get_all_catalyst_data(smiles, xyz_file, neutral_output, cationic_output, ani
         neutral_output (str): Path to the neutral output file.
         cationic_output (str): Path to the cationic output file.
         anionic_output (str): Path to the anionic output file.
-        nmr_output (str): Path to the NMR output file.
+        nmr_output (str | Path | None): Path to the NMR output file, if available.
         IR_output (str): Path to the IR output file.
         dipole_polarizability_output (str): Path to the dipole and polarizability output file.
         IE_EA_output (str): Path to the ionization energy and electron affinity output file.
@@ -2340,7 +2340,8 @@ def get_all_catalyst_data(smiles, xyz_file, neutral_output, cationic_output, ani
     data['ACSF'] = calculate_ACSF_values(xyz_file, smiles)
     data['SOAP'] = calculate_SOAP_values(xyz_file, smiles)
     data['IR_stats'] = get_IR_frequencies(IR_output)[1]
-    data['NMR_shieldings'] = get_NMR_shieldings(nmr_output)
+    if nmr_output is not None and Path(nmr_output).exists():
+        data['NMR_shieldings'] = get_NMR_shieldings(nmr_output)
     data['dipole_moment'] = get_dipole_moment(dipole_polarizability_output)
     data['polarizability'] = get_isotropic_polarizability(dipole_polarizability_output)
     data['Fukui_indices'] = get_Fukui_indices(cationic_nbo, anionic_nbo, neutral_nbo)
@@ -2365,13 +2366,13 @@ def generate_qm_data_dict(
     neutral_nbo: Union[str, Path],
     cationic_nbo: Union[str, Path],
     anionic_nbo: Union[str, Path],
-    nmr_output: Union[str, Path],
     IR_output: Union[str, Path],
     dipole_polarizability_output: Union[str, Path],
     homo_lumo_output: Union[str, Path],
     shermo_output: Union[str, Path],
     janpa_output: Union[str, Path, None] = None,
     nbo_output: Union[str, Path, None] = None,
+    nmr_output: Union[str, Path, None] = None,
 ):
     """
     Generate a dictionary of QM data from available files using memory mapping, pre-loading all files and batch-processing for efficiency. Accepts either or both JANPA and NBO files.
@@ -2382,6 +2383,7 @@ def generate_qm_data_dict(
         shermo_output (str): Path to Shermo output file.
         janpa_output (str, optional): Path to JANPA output file. If None, JANPA fields will be missing.
         nbo_output (str, optional): Path to NBO output file. If None, NBO fields will be missing.
+        nmr_output (str, optional): Path to NMR output file. If None, NMR shielding fields will be missing.
     Returns:
         dict: Dictionary containing all available QM data fields. Missing fields are set to None or empty.
     """
@@ -2393,12 +2395,13 @@ def generate_qm_data_dict(
         "neutral_nbo": neutral_nbo,
         "cationic_nbo": cationic_nbo,
         "anionic_nbo": anionic_nbo,
-        "nmr_output": nmr_output,
         "IR_output": IR_output,
         "dipole_polarizability_output": dipole_polarizability_output,
         "homo_lumo_output": homo_lumo_output,
         "shermo_output": shermo_output,
     }
+    if nmr_output is not None:
+        required_paths["nmr_output"] = nmr_output
     _require_existing_paths(required_paths)
 
     # Convert paths to Path objects
@@ -2406,7 +2409,6 @@ def generate_qm_data_dict(
     neutral_output = Path(neutral_output)
     cationic_output = Path(cationic_output)
     anionic_output = Path(anionic_output)
-    nmr_output = Path(nmr_output)
     IR_output = Path(IR_output)
     dipole_polarizability_output = Path(dipole_polarizability_output)
     neutral_nbo = Path(neutral_nbo)
@@ -2414,6 +2416,7 @@ def generate_qm_data_dict(
     anionic_nbo = Path(anionic_nbo)
     homo_lumo_output = Path(homo_lumo_output)
     shermo_output = Path(shermo_output)
+    nmr_output = Path(nmr_output) if nmr_output else None
     janpa_output = Path(janpa_output) if janpa_output else None
     nbo_output = Path(nbo_output) if nbo_output else None
     

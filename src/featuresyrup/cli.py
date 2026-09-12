@@ -969,7 +969,7 @@ def main():
     load_parser.add_argument('--neutral-nbo', required=True, type=str, help='Neutral NBO output file')
     load_parser.add_argument('--cationic-nbo', required=True, type=str, help='Cationic NBO output file')
     load_parser.add_argument('--anionic-nbo', required=True, type=str, help='Anionic NBO output file')
-    load_parser.add_argument('--nmr-output', required=True, type=str, help='NMR output file')
+    load_parser.add_argument('--nmr-output', required=False, default=None, type=str, help='NMR output file (optional)')
     load_parser.add_argument('--IR-output', required=True, type=str, help='IR output file')
     load_parser.add_argument('--dipole-polarizability-output', required=True, type=str, help='Dipole/polarizability output file')
     load_parser.add_argument('--homo-lumo-output', required=True, type=str, help='HOMO-LUMO output file')

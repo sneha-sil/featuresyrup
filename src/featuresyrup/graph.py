@@ -369,6 +369,7 @@ class MolecularGraph:
         '''
 
         catalyst_node_columns = '''
+            is_carbene_center INTEGER,
             ACSF_values TEXT,
             SOAP_values TEXT,
             proton_isotropic REAL,
@@ -598,6 +599,7 @@ class MolecularGraph:
             lone_pair_1_energy,
             lone_pair_2_occupancy,
             lone_pair_2_energy,
+            is_carbene_center,
             proton_isotropic,
             proton_anisotropic,
             carbon_isotropic,
@@ -812,6 +814,7 @@ class MolecularGraph:
                     node.get('lone_pair_1_energy'),
                     node.get('lone_pair_2_occupancy'),
                     node.get('lone_pair_2_energy'),
+                    node.get('is_carbene_center'),
                     json_wrapper(node.get('ACSF_values')),
                     json_wrapper(node.get('SOAP_values')),
                     node.get('proton_isotropic'),
