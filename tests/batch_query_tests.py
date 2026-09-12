@@ -409,6 +409,22 @@ class TestFileDiscovery:
         mol_id = "test_mol_001"
         xyz_pattern = patterns['xyz_pattern'].format(mol_id=mol_id)
         assert mol_id in xyz_pattern
+
+    def test_file_discovery_ignores_null_patterns(self, small_test_config):
+        """Test that null file patterns are skipped safely."""
+        _, config = small_test_config
+        config['file_patterns']['nmr_pattern'] = None
+        config['file_patterns']['dipole_polarizability_pattern'] = None
+
+        processor = BatchProcessor(config)
+
+        with patch.object(Path, 'rglob', return_value=[]):
+            discovered_files = processor._discover_files_in_directory(Path(config['data_paths']['base_dir']))
+
+        assert 'nmr_output' in discovered_files
+        assert 'dipole_polarizability_output' in discovered_files
+        assert discovered_files['nmr_output'] == []
+        assert discovered_files['dipole_polarizability_output'] == []
     
     @pytest.mark.skipif(not Path(TEST_DATA_CONFIG["tar_gz_file"]).exists(), 
                        reason="No tar.gz test data available")

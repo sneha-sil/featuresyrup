@@ -559,18 +559,19 @@ class BatchProcessor:
         }
         
         for file_type, pattern_key in pattern_map.items():
-            if pattern_key in config_patterns:
-                pattern = config_patterns[pattern_key]
-                if '{mol_id}' in pattern:
-                    # Convert pattern to glob pattern
-                    glob_pattern = pattern.replace('{mol_id}', '*')
-                    file_patterns[file_type] = [glob_pattern]
-                else:
-                    # Use pattern as-is if no {mol_id} placeholder
-                    file_patterns[file_type] = [pattern]
-            else:
+            pattern = config_patterns.get(pattern_key)
+            if not pattern:
                 logger.warning(f"No {pattern_key} specified in config, skipping {file_type} files")
                 file_patterns[file_type] = []
+                continue
+
+            if '{mol_id}' in pattern:
+                # Convert pattern to glob pattern
+                glob_pattern = pattern.replace('{mol_id}', '*')
+                file_patterns[file_type] = [glob_pattern]
+            else:
+                # Use pattern as-is if no {mol_id} placeholder
+                file_patterns[file_type] = [pattern]
 
         discovered_files = {key: [] for key in file_patterns}
         
@@ -674,8 +675,8 @@ class BatchProcessor:
                 pattern_key = f"{file_type}_pattern"
                 file_path = None
                 
-                if pattern_key in file_patterns:
-                    pattern = file_patterns[pattern_key]
+                pattern = file_patterns.get(pattern_key)
+                if pattern:
                     expected_filename = pattern.format(mol_id=mol_id)
                     
                     # Try exact match first
