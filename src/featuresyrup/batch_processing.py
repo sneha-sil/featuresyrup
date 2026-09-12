@@ -671,8 +671,14 @@ class BatchProcessor:
             mol_data = MoleculeData(mol_id, labels_dict.get(mol_id, {}))
             
             # Lookup dictionaries for file matching
+            pattern_keys = {
+                'nmr_output': 'nmr_pattern',
+                'IR_output': 'IR_pattern',
+                'dipole_polarizability_output': 'dipole_polarizability_pattern',
+                'homo_lumo_output': 'homo_lumo_pattern'
+            }
             for file_type in ['xyz', 'shermo', 'janpa', 'nbo', 'neutral_output', 'cationic_output', 'anionic_output', 'neutral_nbo', 'cationic_nbo', 'anionic_nbo', 'nmr_output', 'IR_output', 'dipole_polarizability_output', 'homo_lumo_output']:
-                pattern_key = f"{file_type}_pattern"
+                pattern_key = pattern_keys.get(file_type, f"{file_type}_pattern")
                 file_path = None
                 
                 pattern = file_patterns.get(pattern_key)

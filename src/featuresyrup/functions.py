@@ -2397,7 +2397,6 @@ def generate_qm_data_dict(
         "cationic_nbo": cationic_nbo,
         "anionic_nbo": anionic_nbo,
         "IR_output": IR_output,
-        "dipole_polarizability_output": dipole_polarizability_output,
         "homo_lumo_output": homo_lumo_output,
         "shermo_output": shermo_output,
     }
