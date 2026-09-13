@@ -10,12 +10,31 @@ import sys
 import os
 import json
 import time
+import sys
+import types
 from unittest.mock import patch, MagicMock
+
+if "dscribe" not in sys.modules:
+    dscribe_module = types.ModuleType("dscribe")
+    descriptors_module = types.ModuleType("dscribe.descriptors")
+
+    class _StubDescriptor:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create(self, *args, **kwargs):
+            raise RuntimeError("dscribe is stubbed in the test environment")
+
+    descriptors_module.ACSF = _StubDescriptor
+    descriptors_module.SOAP = _StubDescriptor
+    dscribe_module.descriptors = descriptors_module
+    sys.modules["dscribe"] = dscribe_module
+    sys.modules["dscribe.descriptors"] = descriptors_module
 
 # Add the source directory to the path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from featuresyrup.batch_processing import BatchProcessor, get_config_value
+from featuresyrup.batch_processing import BatchProcessor, get_config_value, process_single_molecule_multiprocessing
 from featuresyrup.graph import MolecularGraph
 from featuresyrup.classes import DictData
 from featuresyrup.functions import generate_qm_data_dict
@@ -630,6 +649,37 @@ class TestBatchProcessing:
             except Exception as e:
                 # Should not fail completely due to error handling
                 pytest.fail(f"Batch processing should handle errors gracefully: {e}")
+
+    def test_worker_returns_traceback_on_failure(self):
+        """Test that worker failures preserve a traceback in the returned payload."""
+        mol_dict = {
+            'mol_id': 'azl_999',
+            'labels': {'SMILES': 'C1=NC=N1'},
+            'xyz': 'xyz.out',
+            'neutral_output': 'neutral.out',
+            'cationic_output': 'cation.out',
+            'anionic_output': 'anion.out',
+            'neutral_nbo': 'neutral_nbo.out',
+            'cationic_nbo': 'cationic_nbo.out',
+            'anionic_nbo': 'anionic_nbo.out',
+            'nmr_output': None,
+            'IR_output': 'ir.out',
+            'dipole_polarizability_output': None,
+            'homo_lumo_output': 'homo.out',
+            'shermo': 'shermo.out',
+            'janpa': 'janpa.out',
+            'nbo': 'nbo.out',
+        }
+        config = {'labels_config': {'smiles_column': 'SMILES'}}
+
+        with patch('featuresyrup.batch_processing.generate_qm_data_dict', side_effect=RuntimeError('boom')):
+            result = process_single_molecule_multiprocessing((mol_dict, config))
+
+        assert result['error'] is True
+        assert result['mol_id'] == 'azl_999'
+        assert result['error_message'] == 'boom'
+        assert 'traceback' in result
+        assert 'RuntimeError' in result['traceback']
     
     def test_memory_monitoring(self, small_test_config):
         """Test memory monitoring during processing."""

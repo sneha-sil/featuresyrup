@@ -310,8 +310,7 @@ class FeaturesyrupCLI:
             mol_graph = MolecularGraph(dict_data)
             
             mol_graph.graph_info.id = args.mol_id
-            mol_graph._qm_data.graph_type = 'catalyst'
-            
+                        
             mol_graph.save_to_database(args.database)
             
             self.logger.info(f"\tSuccessfully loaded {args.mol_id} into database")
@@ -332,10 +331,6 @@ class FeaturesyrupCLI:
             
             query = "SELECT * FROM graphs"
             params = []
-            
-            if args.graph_type:
-                query += " WHERE graph_type = ?"
-                params.append(args.graph_type)
             
             if args.limit:
                 query += " LIMIT ?"
@@ -382,12 +377,8 @@ class FeaturesyrupCLI:
         
         try:
             conn = sqlite3.connect(args.database)
-            query = "SELECT graph_id as mol_id, graph_type FROM graphs"
+            query = "SELECT graph_id as mol_id FROM graphs"
             params = []
-            if args.graph_type:
-                query += " WHERE graph_type = ?"
-                params.append(args.graph_type)
-            
             molecules = pd.read_sql_query(query, conn, params=params)
             
             if len(molecules) == 0:
@@ -400,21 +391,21 @@ class FeaturesyrupCLI:
             target_features = []
             
             for _, row in molecules.iterrows():
-                mol_id, graph_type = row['mol_id'], row['graph_type']
+                mol_id = row['mol_id']
                 try:
                     mol_graph = MolecularGraph.load_from_database(mol_id, args.database)
-                    graph_feat = {'mol_id': mol_id, 'graph_type': graph_type}
+                    graph_feat = {'mol_id': mol_id}
                     graph_feat.update(mol_graph.get_graph_features())
                     graph_feat['num_atoms'] = mol_graph.num_atoms
                     graph_feat['num_edges'] = mol_graph.num_bonds
                     graph_features.append(graph_feat)
                     for node_data in mol_graph.get_node_features():
-                        node_feat = {'mol_id': mol_id, 'graph_type': graph_type}
+                        node_feat = {'mol_id': mol_id}
                         node_feat.update({key: value for key, value in node_data.items() if isinstance(value, (int, float))})
                         node_features.append(node_feat)
 
                     for edge_data in mol_graph.get_edge_features():
-                        edge_feat = {'mol_id': mol_id, 'graph_type': graph_type}
+                        edge_feat = {'mol_id': mol_id}
                         edge_feat.update({key: value for key, value in edge_data.items() if isinstance(value, (int, float))})
                         edge_features.append(edge_feat)
 
@@ -438,12 +429,12 @@ class FeaturesyrupCLI:
                 nodes = [nf for nf in node_features if nf['mol_id'] == graph_feat['mol_id']]
                 for node in nodes:
                     for k, v in node.items():
-                        if k not in ['mol_id', 'node_id', 'graph_type']:
+                        if k not in ['mol_id', 'node_id']:
                             combined_feat[f"node_{k}"] = v
                 edges = [ef for ef in edge_features if ef['mol_id'] == graph_feat['mol_id']]
                 for edge in edges:
                     for k, v in edge.items():
-                        if k not in ['mol_id', 'edge_id', 'graph_type']:
+                        if k not in ['mol_id', 'edge_id']:
                             combined_feat[f"edge_{k}"] = v
                 combined_features.append(combined_feat)
             if combined_features:
@@ -589,9 +580,6 @@ class FeaturesyrupCLI:
             cursor.execute("SELECT COUNT(*) FROM edges")
             total_edges = cursor.fetchone()[0]
             
-            cursor.execute("SELECT graph_type, COUNT(*) FROM graphs GROUP BY graph_type")
-            by_type = cursor.fetchall()
-            
             print(f"\n Database Statistics")
             print(f"{'-'*50}")
             print(f"Database: {args.database}")
@@ -604,11 +592,6 @@ class FeaturesyrupCLI:
                 avg_edges = total_edges / total_molecules
                 print(f"Average nodes per molecule: {avg_nodes:.1f}")
                 print(f"Average edges per molecule: {avg_edges:.1f}")
-            
-            if by_type:
-                print(f"\nBy graph type:")
-                for graph_type, count in by_type:
-                    print(f"  {graph_type}: {count}")
             
             if args.detailed:
                 print(f"\n Detailed Analysis:")
@@ -632,13 +615,13 @@ class FeaturesyrupCLI:
                 print(f"\n Additional data:")
                 print(f"   Target features: {total_targets}")
                 
-                cursor.execute("SELECT graph_id, graph_type, num_atoms, num_bonds, created_timestamp FROM graphs ORDER BY created_timestamp DESC LIMIT 10")
+                cursor.execute("SELECT graph_id, num_atoms, num_bonds, created_timestamp FROM graphs ORDER BY created_timestamp DESC LIMIT 10")
                 recent = cursor.fetchall()
                 
                 if recent:
                     print(f"\n Recent molecules:")
-                    for graph_id, graph_type, num_atoms, num_bonds, created_at in recent:
-                        print(f"   {graph_id} ({graph_type}): {num_atoms} atoms, {num_bonds} bonds - {created_at}")
+                    for graph_id, num_atoms, num_bonds, created_at in recent:
+                        print(f"   {graph_id}: {num_atoms} atoms, {num_bonds} bonds - {created_at}")
             else:
                 cursor.execute("SELECT SUM(num_bonds) FROM graphs")
                 expected_bonds = cursor.fetchone()[0] or 0
@@ -833,7 +816,7 @@ class FeaturesyrupCLI:
             
             # Build query
             base_query = """
-            SELECT g.graph_id, g.graph_type, g.num_atoms, g.charge,
+            SELECT g.graph_id, g.num_atoms, g.charge,
                    g.smiles, g.formula, g.molecular_mass, g.num_electrons, g.num_bonds,
                    COUNT(DISTINCT n.node_id) as node_count,
                    COUNT(DISTINCT e.edge_id) as edge_count
@@ -912,7 +895,6 @@ class FeaturesyrupCLI:
                         for _, row in df.iterrows():
                             values = [
                                 str(row['graph_id'])[:10],  # Truncate if too long
-                                str(row['graph_type'])[:6],
                                 str(row['formula'] or 'N/A')[:8],
                                 str(row['num_atoms']),
                                 str(row['num_electrons']),

@@ -1,11 +1,32 @@
 import math
+import sys
+import types
+import yaml
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+if "dscribe" not in sys.modules:
+    dscribe_module = types.ModuleType("dscribe")
+    descriptors_module = types.ModuleType("dscribe.descriptors")
+
+    class _StubDescriptor:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create(self, *args, **kwargs):
+            raise RuntimeError("dscribe is stubbed in the test environment")
+
+    descriptors_module.ACSF = _StubDescriptor
+    descriptors_module.SOAP = _StubDescriptor
+    dscribe_module.descriptors = descriptors_module
+    sys.modules["dscribe"] = dscribe_module
+    sys.modules["dscribe.descriptors"] = descriptors_module
+
 import featuresyrup.functions as features_functions
-from featuresyrup.classes import _default_node_record
+from featuresyrup.classes import DictData, _default_node_record, Targets
+from featuresyrup.graph import MolecularGraph
 from featuresyrup import (
     parse_orbital_energies,
     get_IR_frequencies,
@@ -19,19 +40,29 @@ from featuresyrup import (
 
 
 BASE_DIR = Path(__file__).resolve().parent
+TEST_DATA_DIR = BASE_DIR.parent / "test_data"
+CONFIG_PATH = TEST_DATA_DIR / "config.yaml"
 
-NEUTRAL_NBO = BASE_DIR / "SS-11-01_azl_001_neutral_nbo.out"
-CATION_NBO = BASE_DIR / "SS-11-01_azl_001_cation_nbo.out"
-ANION_NBO = BASE_DIR / "SS-11-01_azl_001_anion_nbo.out"
 
-NEUTRAL_ORCA = BASE_DIR / "SS-11-01_azl_001_neutral.out"
-CATION_ORCA = BASE_DIR / "SS-11-01_azl_001_cation.out"
-ANION_ORCA = BASE_DIR / "SS-11-01_azl_001_anion.out"
+def _load_test_config() -> dict:
+    if not CONFIG_PATH.exists():
+        pytest.skip(f"Missing test config file: {CONFIG_PATH.name}")
+    with CONFIG_PATH.open("r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle)
 
-OUTPUT_ORCA = BASE_DIR / "azl_001.out"
-NMR_ORCA = BASE_DIR / "SS-11-01_azl_001_nmr.out"
 
-XYZ_FILE = BASE_DIR / "azl_001_geom.xyz"
+NEUTRAL_NBO = TEST_DATA_DIR / "azl_001_neutral_nbo.out"
+CATION_NBO = TEST_DATA_DIR / "azl_001_cation_nbo.out"
+ANION_NBO = TEST_DATA_DIR / "azl_001_anion_nbo.out"
+
+NEUTRAL_ORCA = TEST_DATA_DIR / "azl_001_neutral.out"
+CATION_ORCA = TEST_DATA_DIR / "azl_001_cation.out"
+ANION_ORCA = TEST_DATA_DIR / "azl_001_anion.out"
+
+OUTPUT_ORCA = TEST_DATA_DIR / "azl_001.out"
+NMR_ORCA = TEST_DATA_DIR / "azl_001_nmr.out"
+
+XYZ_FILE = TEST_DATA_DIR / "azl_001_geom.xyz"
 SMILES = "CC(C)(C)C[C@H]1COC2=NN(c3ccccc3)[C]N21"
 
 
@@ -48,19 +79,18 @@ def _assert_finite_float(value):
 def test_parse_orbital_energies():
     _require_file(NEUTRAL_ORCA)
 
-    homo, lumo, gap = parse_orbital_energies(str(NEUTRAL_ORCA))
+    result = parse_orbital_energies(str(NEUTRAL_ORCA))
     print("\nparse_orbital_energies:")
-    print("  homo =", homo)
-    print("  lumo =", lumo)
-    print("  gap  =", gap)
+    print("  result =", result)
 
-    assert isinstance(homo, str)
-    assert isinstance(lumo, str)
-    _assert_finite_float(gap)
+    assert set(result.keys()) == {"HOMO", "LUMO", "HOMO_LUMO_gap"}
+    assert isinstance(result["HOMO"], str)
+    assert isinstance(result["LUMO"], str)
+    _assert_finite_float(result["HOMO_LUMO_gap"])
 
-    homo_f = float(homo)
-    lumo_f = float(lumo)
-    assert math.isclose(gap, lumo_f - homo_f, rel_tol=1e-12, abs_tol=1e-12)
+    homo_f = float(result["HOMO"])
+    lumo_f = float(result["LUMO"])
+    assert math.isclose(result["HOMO_LUMO_gap"], lumo_f - homo_f, rel_tol=1e-12, abs_tol=1e-12)
 
 
 def test_get_ir_frequencies():
@@ -322,5 +352,157 @@ def test_get_all_catalyst_data_skips_dipole_when_missing(monkeypatch):
         "homo_lumo.out",
     )
 
+    assert "dipole_moment" not in result
+    assert "polarizability" not in result
+
+
+def test_descriptor_centers_are_nested_per_system(monkeypatch):
+    class _FakeACSF:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create(self, system, centers=None, **kwargs):
+            assert centers == [0]
+            return [[1.0, 2.0]]
+
+    class _FakeSOAP:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create(self, *args, **kwargs):
+            assert kwargs.get("centers") == [0]
+            return [[3.0, 4.0]]
+
+    monkeypatch.setattr(features_functions, "ACSF", _FakeACSF)
+    monkeypatch.setattr(features_functions, "SOAP", _FakeSOAP)
+    monkeypatch.setattr(features_functions, "identify_carbene_center", lambda mol: {"carbene": 0, "heteroatoms": [1, 2]})
+
+    acsf_result = features_functions.calculate_ACSF_values(str(XYZ_FILE), SMILES)
+    soap_result = features_functions.calculate_SOAP_values(str(XYZ_FILE), SMILES)
+
+    assert acsf_result == {"acsf_features": [1.0, 2.0]}
+    assert soap_result == {"soap_features": [3.0, 4.0]}
+
+
+def test_targets_keep_npa_total_fields_for_catalyst_graph():
+    qm_data = SimpleNamespace(
+        graph_type="catalyst",
+        homo_lumo=None,
+        morfeus=None,
+        IR_stats=None,
+        NMR_shieldings=None,
+        dipole_moment=None,
+        IE_EA=None,
+        polarizability=None,
+        natural_population_totals={
+            "natural_minimal_basis": 12.3,
+            "natural_rydberg_basis": 4.5,
+            "total_core_population": 8.0,
+            "total_valence_population": 4.3,
+            "total_rydberg_population": 0.5,
+            "total_population": 12.8,
+        },
+        frequencies=None,
+        moments_of_inertia=None,
+        rotational_constants=None,
+        rotational_temperatures=None,
+        heat_capacity_Cv=None,
+        heat_capacity_Cp=None,
+        entropy=None,
+        ZPE=None,
+        electronic_energy=None,
+        potential_energy=None,
+        enthalpy=None,
+        gibbs_free_energy=None,
+    )
+
+    targets = Targets(qm_data)
+    assert targets.natural_minimal_basis == 12.3
+    assert targets.natural_rydberg_basis == 4.5
+    assert targets.total_core_population == 8.0
+    assert targets.total_valence_population == 4.3
+    assert targets.total_rydberg_population == 0.5
+    assert targets.total_population == 12.8
+
+
+def test_molecular_graph_exposes_graph_type():
+    qm_data = DictData({
+        "graph_type": "catalyst",
+        "id": "azl_001",
+        "smiles": "C1=NC=N1",
+        "formula": "C2H2N2",
+        "molecular_mass": 82.0,
+        "num_atoms": 0,
+        "xyz_coordinates": [],
+        "atomic_numbers": [],
+        "atom_labels": [],
+    })
+
+    graph = MolecularGraph(qm_data)
+    assert graph.graph_type == "catalyst"
+
+
+def test_test_data_config_matches_expected_files():
+    config = _load_test_config()
+    base_dir = Path(config["data_paths"]["base_dir"])
+
+    expected_patterns = {
+        "xyz_pattern": "azl_001_geom.xyz",
+        "shermo_pattern": "azl_001_shermo.out",
+        "janpa_pattern": "azl_001_wft.JANPA",
+        "nbo_pattern": "azl_001_nbo.out",
+        "neutral_output_pattern": "azl_001_neutral.out",
+        "cationic_output_pattern": "azl_001_cation.out",
+        "anionic_output_pattern": "azl_001_anion.out",
+        "neutral_nbo_pattern": "azl_001_neutral_nbo.out",
+        "cationic_nbo_pattern": "azl_001_cation_nbo.out",
+        "anionic_nbo_pattern": "azl_001_anion_nbo.out",
+        "IR_pattern": "azl_001.out",
+        "homo_lumo_pattern": "azl_001.out",
+    }
+
+    for pattern_key, expected_name in expected_patterns.items():
+        pattern = config["file_patterns"][pattern_key]
+        assert pattern is not None
+        candidate = base_dir / pattern.format(mol_id="azl_001")
+        assert candidate.name == expected_name
+        assert candidate.exists(), f"Missing fixture for {pattern_key}: {candidate}"
+
+
+def test_generate_qm_data_dict_uses_optional_and_required_inputs():
+    config = _load_test_config()
+    base_dir = Path(config["data_paths"]["base_dir"])
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(features_functions, "calculate_morfeus_descriptors", lambda *_: {"buried_volume": 1.0, "fraction_vbur": 2.0, "free_volume": 3.0, "sasa_area": 4.0, "sasa_volume": 5.0})
+    monkeypatch.setattr(features_functions, "calculate_ACSF_values", lambda *_: {"acsf_features": [1.0]})
+    monkeypatch.setattr(features_functions, "calculate_SOAP_values", lambda *_: {"soap_features": [1.0]})
+    monkeypatch.setattr(features_functions, "get_Fukui_indices", lambda *_: {"fukui_indices": {"f_plus": [1.0], "f_minus": [2.0], "f_zero": [1.5]}})
+    monkeypatch.setattr(features_functions, "get_IE_EA", lambda *_: {"ionization_energy": 1.0, "electron_affinity": 2.0, "hardness": 3.0, "chemical_potential": 4.0, "electronegativity": 5.0, "electrophilicity": 6.0})
+
+    try:
+        result = features_functions.generate_qm_data_dict(
+            mol_id="azl_001",
+            smiles=SMILES,
+            xyz_file=base_dir / "azl_001_geom.xyz",
+            neutral_output=base_dir / "azl_001_neutral.out",
+            cationic_output=base_dir / "azl_001_cation.out",
+            anionic_output=base_dir / "azl_001_anion.out",
+            neutral_nbo=base_dir / "azl_001_neutral_nbo.out",
+            cationic_nbo=base_dir / "azl_001_cation_nbo.out",
+            anionic_nbo=base_dir / "azl_001_anion_nbo.out",
+            IR_output=base_dir / "azl_001.out",
+            homo_lumo_output=base_dir / "azl_001.out",
+            shermo_output=base_dir / "azl_001_shermo.out",
+            janpa_output=base_dir / "azl_001_wft.JANPA",
+            nbo_output=base_dir / "azl_001_nbo.out",
+            nmr_output=None,
+            dipole_polarizability_output=None,
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert isinstance(result, dict)
+    assert result["id"] == "azl_001"
     assert "dipole_moment" not in result
     assert "polarizability" not in result

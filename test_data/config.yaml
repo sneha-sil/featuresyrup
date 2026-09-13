@@ -1,0 +1,81 @@
+# featuresyrup configuration template for batch processing
+# 
+# Copy this file and customize the paths for your data structure.
+# Save as config.yaml and use with: python -m featuresyrup.batch_processing --config config.yaml
+
+data_paths:
+  # Option 1: Individual directories (set archive_file to null if using this)
+  base_dir: /home/uvx4187/featuresyrup/test_data # "/path/to/your/molecular/data"
+  xyz_dir: null # "/path/to/your/molecular/data/xyz_files"
+  shermo_dir: null # "/path/to/your/molecular/data/shermo_outputs"
+  janpa_dir: null # "/path/to/your/molecular/data/janpa_outputs"
+  nbo_dir: null # "/path/to/your/molecular/data/nbo_outputs"
+  neutral_output_dir: null # "/path/to/your/molecular/data/neutral_orca_outputs"
+  cationic_output_dir: null # "/path/to/your/molecular/data/cationic_orca_outputs"
+  anionic_output_dir: null # "/path/to/your/molecular/data/anionic_orca_outputs"
+  neutral_nbo_dir: null # "/path/to/your/molecular/data/neutral_nbo_outputs"
+  cationic_nbo_dir: null # "/path/to/your/molecular/data/cationic_nbo_outputs"
+  anionic_nbo_dir: null # "/path/to/your/molecular/data/anionic_nbo_outputs"
+  nmr_dir: null # "/path/to/your/molecular/data/nmr_outputs"
+  IR_dir: null # "/path/to/your/molecular/data/ir_outputs"
+  dipole_polarizability_dir: null # "/path/to/your/molecular/data/dipole_polarizability_outputs"
+  homo_lumo_dir: null # "/path/to/your/molecular/data/homo_lumo_outputs"
+
+  # Option 2: Compressed archive containing all data (set directories to null if using this)
+  archive_file: null # "/path/to/your/data.tar.gz"
+
+file_patterns:
+  # IMPORTANT: featuresyrup expects the full catalyst input set.
+  # Matching files to your molecular identifier, customize each pattern as necessary.
+  # Use {mol_id} as placeholder for the molecule identifier
+  xyz_pattern: "{mol_id}_geom.xyz"                    # e.g., mol_001_geom.xyz
+  shermo_pattern: "{mol_id}_shermo.out"          # e.g., mol_001_shermo.out
+  janpa_pattern: "{mol_id}_wft.JANPA"            # e.g., mol_001_wft.JANPA
+  nbo_pattern: "{mol_id}_nbo.out"                # e.g., mol_001_nbo.out
+  neutral_output_pattern: "{mol_id}_neutral.out"   # e.g., mol_001_neutral.out
+  cationic_output_pattern: "{mol_id}_cation.out"   # e.g., mol_001_cation.out
+  anionic_output_pattern: "{mol_id}_anion.out"     # e.g., mol_001_anion.out
+  neutral_nbo_pattern: "{mol_id}_neutral_nbo.out"  # e.g., mol_001_neutral_nbo.out
+  cationic_nbo_pattern: "{mol_id}_cation_nbo.out"   # e.g., mol_001_cation_nbo.out
+  anionic_nbo_pattern: "{mol_id}_anion_nbo.out"     # e.g., mol_001_anion_nbo.out
+  nmr_pattern: null                  # e.g., mol_001_nmr.out
+  IR_pattern: "{mol_id}.out"                    # e.g., mol_001_ir.out
+  dipole_polarizability_pattern:  null # e.g., mol_001_dipole.out
+  homo_lumo_pattern: "{mol_id}.out"      # e.g., mol_001_homo_lumo.out
+
+# CSV file containing molecular identifiers, SMILES strings, and miscellaneous properties
+data_file: "/home/uvx4187/featuresyrup/test_data/labels.csv"
+
+labels_file: "/home/uvx4187/featuresyrup/test_data/labels.csv"  # CSV file with labels corresponding to rows in the data csv file (can be the same as the data_file)
+
+labels_config:
+  # Column names in your labels CSV file
+  id_column: "mol_id"        # Column containing unique molecule identifiers, taken from data csv
+  smiles_column: "SMILES"    # Column containing SMILES strings, taken from data csv
+  labels_column: "none"     # Column containing target property for regression/classification, taken from labels csv
+
+settings:
+  max_workers: 2            # Number of parallel workers (setting this too high will lock the database!)
+  batch_size: 1000           # Molecules processed per batch  
+
+memory:
+  clear_cache_frequency: 1000        # Clear file cache every N molecules
+  max_memory_usage_gb: 16.0          # Approximate memory limit (GB)
+
+cleanup:
+  remove_temp_files: true            # Remove temporary extraction directory after processing
+  
+output:
+  database_name: "test_NHCs"              # Whether to overwrite existing database
+  export_ml_features: true                # Export a csv file of ML features
+  ml_export_dir: "/home/uvx4187/featuresyrup/test_data"                # Directory for ML feature exports
+
+error_handling:
+  continue_on_error: true           # Continue processing if some molecules fail
+  save_error_log: true              # Save failed molecules to JSON file
+  max_errors: 1000                  # Stop processing after this many errors
+  
+logging:
+  level: "INFO"                     # DEBUG, INFO, WARNING, ERROR
+  save_to_file: true                # Save logs to file
+  log_file: "test_NHCs_batch_processing.log"  # Log file name

@@ -24,6 +24,7 @@ import psutil
 import time
 import multiprocessing as mp
 import argparse
+import traceback
 
 from .graph import MolecularGraph
 from .classes import DictData
@@ -82,9 +83,6 @@ def process_single_molecule_multiprocessing(args):
             if field_value is None:
                 continue
         
-        # Add graph metadata
-        qm_dict['graph_type'] = 'catalyst'
-        
         # Create molecular graph and save directly to database
         dict_data = DictData(qm_dict)
         molecular_graph = MolecularGraph(dict_data)
@@ -118,7 +116,6 @@ def process_single_molecule_multiprocessing(args):
         
         return {
             'id': molecular_graph.graph_id,
-            'graph_type': molecular_graph.graph_type,
             'smiles': getattr(molecular_graph._qm_data, 'smiles', ''),
             'nodes': node_count,
             'edges': edge_count,
@@ -131,7 +128,8 @@ def process_single_molecule_multiprocessing(args):
         return {
             'error': True,
             'mol_id': mol_id,
-            'error_message': str(e)
+            'error_message': str(e),
+            'traceback': traceback.format_exc()
         }
 
 logging.basicConfig(
@@ -268,7 +266,7 @@ class MoleculeData:
         'neutral_output', 'cationic_output', 'anionic_output',
         'neutral_nbo', 'cationic_nbo', 'anionic_nbo',
         'nmr_output', 'IR_output', 'dipole_polarizability_output', 'homo_lumo_output',
-        'labels', 'graph_type', '_file_cache'
+        'labels', '_file_cache'
     ]
     
     def __init__(self, mol_id: str, labels: dict = None):
@@ -288,7 +286,6 @@ class MoleculeData:
         self.dipole_polarizability_output = None
         self.homo_lumo_output = None
         self.labels = labels or {}
-        self.graph_type = None
         self._file_cache = {}  # Cache for pre-loaded file contents
     
     def to_dict(self):
@@ -310,7 +307,6 @@ class MoleculeData:
             'dipole_polarizability_output': self.dipole_polarizability_output,
             'homo_lumo_output': self.homo_lumo_output,
             'labels': self.labels,
-            'graph_type': self.graph_type
         }
 
 class BatchProcessor:
@@ -798,7 +794,6 @@ class BatchProcessor:
                 'janpa': str(mol_data.janpa) if mol_data.janpa else None,
                 'nbo': str(mol_data.nbo) if mol_data.nbo else None,
                 'labels': mol_data.labels,
-                'graph_type': mol_data.graph_type
             }
             worker_args.append((mol_dict, self.config))
         
@@ -884,6 +879,7 @@ class BatchProcessor:
                     error_info = {
                         'mol_id': result['mol_id'],
                         'error': result['error_message'],
+                        'traceback': result.get('traceback'),
                         'available_files': {}
                     }
                     self.failed_molecules.append(error_info)
@@ -942,9 +938,7 @@ class BatchProcessor:
                 if field_value is None:  
                     logger.warning(f"Field {field_name} is None for {mol_id}")
                     continue
-            
-            qm_dict['graph_type'] = 'catalyst'
-            
+                        
             dict_data = DictData(qm_dict)
             molecular_graph = MolecularGraph(dict_data)
             molecular_graph.graph_id = mol_id
@@ -959,6 +953,7 @@ class BatchProcessor:
             error_info = {
                 'mol_id': mol_id,
                 'error': str(e),
+                'traceback': traceback.format_exc(),
                 'available_files': {
                     'xyz': mol_data.xyz is not None,
                     'shermo': mol_data.shermo is not None,

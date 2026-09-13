@@ -33,6 +33,12 @@ def _as_list(value: Any) -> Any:
     return value
 
 
+def _as_python_scalar(value: Any) -> Any:
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
 def _descriptor_for_atom(descriptor: Any, atom_index: int, carbene_index: Optional[int] = None) -> Any:
     if descriptor is None:
         return None
@@ -113,9 +119,9 @@ def _default_node_record(atom_index: int, qm_data: "DictData") -> Dict[str, Any]
     })
 
     record.update({
-        "wiberg_bond_order_total": _safe_get(getattr(qm_data, "wiberg_bond_order_totals", None), atom_index),
-        "bound_hydrogens": _safe_get(getattr(qm_data, "bound_hydrogens", None), atom_index),
-        "node_degree": _safe_get(getattr(qm_data, "node_degrees", None), atom_index),
+        "wiberg_bond_order_total": _as_python_scalar(_safe_get(getattr(qm_data, "wiberg_bond_order_totals", None), atom_index)),
+        "bound_hydrogens": _as_python_scalar(_safe_get(getattr(qm_data, "bound_hydrogens", None), atom_index)),
+        "node_degree": _as_python_scalar(_safe_get(getattr(qm_data, "node_degrees", None), atom_index)),
         "electron_population": _safe_get(getattr(qm_data, "electron_populations", None), atom_index),
         "nmb_population": _safe_get(getattr(qm_data, "nmb_populations", None), atom_index),
         "npa_charge": _safe_get(getattr(qm_data, "npa_charges", None), atom_index),
@@ -160,7 +166,7 @@ class DictData:
     """Memory-optimized data container using __slots__."""
     
     __slots__ = [
-        'graph_type', 'id', 'smiles', 'formula', 'molecular_mass', 'num_atoms',
+        'id', 'smiles', 'formula', 'molecular_mass', 'num_atoms',
         'xyz_coordinates', 'atomic_numbers', 'atom_labels', 'polarizability',
         'homo_lumo', 'morfeus', 'IR_stats', 'NMR_shieldings', 'dipole_moment',
         'IE_EA', 'ACSF', 'SOAP', 'Fukui_indices',
@@ -194,7 +200,6 @@ class DictData:
 
         # Single comprehensive key extraction to minimize dictionary access operations
         all_keys = {
-            'graph_type': 'graph_type',
             'id': 'id', 
             'smiles': 'smiles',
             'formula': 'formula',
@@ -244,8 +249,6 @@ class DictData:
         extracted_data = {key: qm_data_dict.get(dict_key) for key, dict_key in all_keys.items()}
         for attr, value in extracted_data.items():
             setattr(self, attr, value)
-
-        self.graph_type = "catalyst"
         
         # Pre-compute distance matrix
         self.bond_distance_matrix = calculate_distance_matrix(self.xyz_coordinates) if self.xyz_coordinates is not None else None
@@ -282,23 +285,12 @@ class DictData:
         
     def _precompute_graph_type_features(self):
         """Pre-compute derived features based on graph type - all base data already extracted."""
-        if self.wiberg_bond_order_matrix is not None:
-            self.wiberg_bond_order_totals = get_wiberg_bond_order_totals(self.wiberg_bond_order_matrix)
-            self.bound_hydrogens = get_bound_hydrogens_per_atom(self.atomic_numbers, self.wiberg_bond_order_matrix) if self.atomic_numbers else None
-            self.node_degrees = get_node_degrees(self.wiberg_bond_order_matrix)
-        else:
-            self.wiberg_bond_order_totals = None
-            self.bound_hydrogens = None
-            self.node_degrees = None
-
-        if self.CLPO_data is not None:
-            self.lone_pair_CLPOs = get_LP_CLPOs(self.CLPO_data)
-            self.bonding_CLPOs = get_BD_CLPOs(self.CLPO_data)
-            self.antibonding_CLPOs = get_AB_CLPOs(self.CLPO_data)
-        else:
-            self.lone_pair_CLPOs = None
-            self.bonding_CLPOs = None
-            self.antibonding_CLPOs = None
+        self.wiberg_bond_order_totals = get_wiberg_bond_order_totals(self.wiberg_bond_order_matrix)
+        self.bound_hydrogens = get_bound_hydrogens_per_atom(self.atomic_numbers, self.wiberg_bond_order_matrix) if self.atomic_numbers else None
+        self.node_degrees = get_node_degrees(self.wiberg_bond_order_matrix)
+        self.lone_pair_CLPOs = get_LP_CLPOs(self.CLPO_data)
+        self.bonding_CLPOs = get_BD_CLPOs(self.CLPO_data)
+        self.antibonding_CLPOs = get_AB_CLPOs(self.CLPO_data)
             
     def _precompute_all_node_features(self):
         """Pre-compute all node features once, storing structured data for flexible formatting."""
@@ -321,177 +313,108 @@ class DictData:
             'is_carbene_center': [_is_carbene_center(atom_index, carbene_index) for atom_index in range(self.num_atoms)],
         }
         
-        if self.graph_type == "NPA":
-            if self.natural_population_analysis_charges:
-                electron_pops, nmb_pops, npa_charges = extract_npa_charges(self.natural_population_analysis_charges)
-            else:
-                electron_pops = nmb_pops = npa_charges = [None] * self.num_atoms
-                
-            # Convert numpy arrays to Python lists to avoid binary storage
-            wiberg_totals = self.wiberg_bond_order_totals.tolist() if self.wiberg_bond_order_totals is not None else [None] * self.num_atoms
-            bound_h = self.bound_hydrogens.tolist() if self.bound_hydrogens is not None else [None] * self.num_atoms
-            node_deg = self.node_degrees.tolist() if self.node_degrees is not None else [None] * self.num_atoms
-                
-            node_data.update({
-                'wiberg_bond_order_totals': wiberg_totals,
-                'bound_hydrogens': bound_h,
-                'node_degrees': node_deg,
-                'electron_populations': electron_pops,
-                'nmb_populations': nmb_pops,
-                'npa_charges': npa_charges,
-            })
-            
-        elif self.graph_type == "NBO":
-            num_atoms = self.num_atoms
-            
-            natural_charges = np.full(num_atoms, np.nan)
-            core_populations = np.full(num_atoms, np.nan)
-            valence_populations = np.full(num_atoms, np.nan)
-            rydberg_populations = np.full(num_atoms, np.nan)
-            total_populations = np.full(num_atoms, np.nan)
-            core_orbital_occupancies = np.full(num_atoms, np.nan)
-            core_orbital_energies = np.full(num_atoms, np.nan)
-            
-            if self.natural_population_analysis:
-                for i, npa in enumerate(self.natural_population_analysis[:num_atoms]):
-                    if npa:
-                        natural_charges[i] = npa.get('natural_charge', np.nan)
-                        core_populations[i] = npa.get('core_population', np.nan)
-                        valence_populations[i] = npa.get('valence_population', np.nan)
-                        rydberg_populations[i] = npa.get('rydberg_population', np.nan)
-                        total_populations[i] = npa.get('total_population', np.nan)
-            
-            if self.core_NBOs:
-                for i in range(num_atoms):
-                    core_nbo = get_NBO_entry_by_indices(self.core_NBOs, [i+1])
-                    if core_nbo:
-                        core_orbital_occupancies[i] = get_NBO_information(core_nbo, "NBO_occupancy") or np.nan
-                        core_orbital_energies[i] = get_NBO_information(core_nbo, "energy") or np.nan
-            
-            lone_pair_occupancies = []
-            lone_pair_energies = []
-            max_lone_pairs = 2
-            
+        # Ensure numpy arrays are converted to Python lists to avoid binary/blob storage
+        def _ensure_list(x):
+            if x is None:
+                return None
+            if isinstance(x, np.ndarray):
+                return x.tolist()
+            if isinstance(x, list):
+                return x
+            try:
+                return list(x)
+            except Exception:
+                return x
+
+        self.wiberg_bond_order_totals = _ensure_list(getattr(self, 'wiberg_bond_order_totals', None))
+        self.bound_hydrogens = _ensure_list(getattr(self, 'bound_hydrogens', None))
+        self.node_degrees = _ensure_list(getattr(self, 'node_degrees', None))
+
+        num_atoms = self.num_atoms
+        
+        natural_charges = np.full(num_atoms, np.nan)
+        core_populations = np.full(num_atoms, np.nan)
+        valence_populations = np.full(num_atoms, np.nan)
+        rydberg_populations = np.full(num_atoms, np.nan)
+        total_populations = np.full(num_atoms, np.nan)
+        core_orbital_occupancies = np.full(num_atoms, np.nan)
+        core_orbital_energies = np.full(num_atoms, np.nan)
+        
+        if self.natural_population_analysis:
+            for i, npa in enumerate(self.natural_population_analysis[:num_atoms]):
+                if npa:
+                    natural_charges[i] = npa.get('natural_charge', np.nan)
+                    core_populations[i] = npa.get('core_population', np.nan)
+                    valence_populations[i] = npa.get('valence_population', np.nan)
+                    rydberg_populations[i] = npa.get('rydberg_population', np.nan)
+                    total_populations[i] = npa.get('total_population', np.nan)
+        
+        if self.core_NBOs:
             for i in range(num_atoms):
-                lone_pair_nbos = get_NBO_entry_by_indices(self.lone_pair_NBOs, [i+1]) if self.lone_pair_NBOs else None
-                occupancies = get_NBO_information(lone_pair_nbos, "NBO_occupancy") if lone_pair_nbos else []
-                energies = get_NBO_information(lone_pair_nbos, "energy") if lone_pair_nbos else []
+                core_nbo = get_NBO_entry_by_indices(self.core_NBOs, [i+1])
+                if core_nbo:
+                    core_orbital_occupancies[i] = get_NBO_information(core_nbo, "NBO_occupancy") or np.nan
+                    core_orbital_energies[i] = get_NBO_information(core_nbo, "energy") or np.nan
+        
+        lone_pair_occupancies = []
+        lone_pair_energies = []
+        max_lone_pairs = 2
+        
+        for i in range(num_atoms):
+            lone_pair_nbos = get_NBO_entry_by_indices(self.lone_pair_NBOs, [i+1]) if self.lone_pair_NBOs else None
+            occupancies = get_NBO_information(lone_pair_nbos, "NBO_occupancy") if lone_pair_nbos else []
+            energies = get_NBO_information(lone_pair_nbos, "energy") if lone_pair_nbos else []
+            
+            # Ensure lists
+            if not isinstance(occupancies, (list, tuple)):
+                occupancies = [occupancies] if occupancies is not None else []
+            if not isinstance(energies, (list, tuple)):
+                energies = [energies] if energies is not None else []
                 
-                if not isinstance(occupancies, (list, tuple)):
-                    occupancies = [occupancies] if occupancies is not None else []
-                if not isinstance(energies, (list, tuple)):
-                    energies = [energies] if energies is not None else []
+            # Pad to exactly max_lone_pairs
+            atom_lp_occ = list(occupancies[:max_lone_pairs]) + [None] * max(0, max_lone_pairs - len(occupancies))
+            atom_lp_en = list(energies[:max_lone_pairs]) + [None] * max(0, max_lone_pairs - len(energies))
                     
-                atom_lp_occ = list(occupancies[:max_lone_pairs]) + [None] * max(0, max_lone_pairs - len(occupancies))
-                atom_lp_en = list(energies[:max_lone_pairs]) + [None] * max(0, max_lone_pairs - len(energies))
-                        
-                lone_pair_occupancies.append(atom_lp_occ)
-                lone_pair_energies.append(atom_lp_en)
+            lone_pair_occupancies.append(atom_lp_occ)
+            lone_pair_energies.append(atom_lp_en)
+        
+        if self.natural_population_analysis_charges:
+            electron_pops, nmb_pops, npa_charges = extract_npa_charges(self.natural_population_analysis_charges)
+        else:
+            electron_pops = nmb_pops = npa_charges = [None] * self.num_atoms
             
-            wiberg_totals = [None] * self.num_atoms
-            bound_h = [None] * self.num_atoms
-            node_deg = [None] * self.num_atoms
-            electron_pops = [None] * self.num_atoms
-            nmb_pops = [None] * self.num_atoms
-            npa_charges = [None] * self.num_atoms
-            
-            node_data.update({
-                'wiberg_bond_order_totals': wiberg_totals,
-                'bound_hydrogens': bound_h,
-                'node_degrees': node_deg,
-                'electron_populations': electron_pops,
-                'nmb_populations': nmb_pops,
-                'npa_charges': npa_charges,
-                'natural_charges': [None if np.isnan(x) else x for x in natural_charges],
-                'core_populations': [None if np.isnan(x) else x for x in core_populations],
-                'valence_populations': [None if np.isnan(x) else x for x in valence_populations],
-                'rydberg_populations': [None if np.isnan(x) else x for x in rydberg_populations],
-                'total_populations': [None if np.isnan(x) else x for x in total_populations],
-                'core_orbital_occupancies': [None if np.isnan(x) else x for x in core_orbital_occupancies],
-                'core_orbital_energies': [None if np.isnan(x) else x for x in core_orbital_energies],
-                'lone_pair_occupancies': lone_pair_occupancies,
-                'lone_pair_energies': lone_pair_energies,
-            })
-            
-        elif self.graph_type == "QM":
-            num_atoms = self.num_atoms
-            
-            natural_charges = np.full(num_atoms, np.nan)
-            core_populations = np.full(num_atoms, np.nan)
-            valence_populations = np.full(num_atoms, np.nan)
-            rydberg_populations = np.full(num_atoms, np.nan)
-            total_populations = np.full(num_atoms, np.nan)
-            core_orbital_occupancies = np.full(num_atoms, np.nan)
-            core_orbital_energies = np.full(num_atoms, np.nan)
-            
-            if self.natural_population_analysis:
-                for i, npa in enumerate(self.natural_population_analysis[:num_atoms]):
-                    if npa:
-                        natural_charges[i] = npa.get('natural_charge', np.nan)
-                        core_populations[i] = npa.get('core_population', np.nan)
-                        valence_populations[i] = npa.get('valence_population', np.nan)
-                        rydberg_populations[i] = npa.get('rydberg_population', np.nan)
-                        total_populations[i] = npa.get('total_population', np.nan)
-            
-            if self.core_NBOs:
-                for i in range(num_atoms):
-                    core_nbo = get_NBO_entry_by_indices(self.core_NBOs, [i+1])
-                    if core_nbo:
-                        core_orbital_occupancies[i] = get_NBO_information(core_nbo, "NBO_occupancy") or np.nan
-                        core_orbital_energies[i] = get_NBO_information(core_nbo, "energy") or np.nan
-            
-            lone_pair_occupancies = []
-            lone_pair_energies = []
-            max_lone_pairs = 2
-            
-            for i in range(num_atoms):
-                lone_pair_nbos = get_NBO_entry_by_indices(self.lone_pair_NBOs, [i+1]) if self.lone_pair_NBOs else None
-                occupancies = get_NBO_information(lone_pair_nbos, "NBO_occupancy") if lone_pair_nbos else []
-                energies = get_NBO_information(lone_pair_nbos, "energy") if lone_pair_nbos else []
-                
-                # Ensure lists
-                if not isinstance(occupancies, (list, tuple)):
-                    occupancies = [occupancies] if occupancies is not None else []
-                if not isinstance(energies, (list, tuple)):
-                    energies = [energies] if energies is not None else []
-                    
-                # Pad to exactly max_lone_pairs
-                atom_lp_occ = list(occupancies[:max_lone_pairs]) + [None] * max(0, max_lone_pairs - len(occupancies))
-                atom_lp_en = list(energies[:max_lone_pairs]) + [None] * max(0, max_lone_pairs - len(energies))
-                        
-                lone_pair_occupancies.append(atom_lp_occ)
-                lone_pair_energies.append(atom_lp_en)
-            
-            if self.natural_population_analysis_charges:
-                electron_pops, nmb_pops, npa_charges = extract_npa_charges(self.natural_population_analysis_charges)
-            else:
-                electron_pops = nmb_pops = npa_charges = [None] * self.num_atoms
-            
-            # Convert numpy arrays to Python lists to avoid binary storage
-            wiberg_totals = self.wiberg_bond_order_totals.tolist() if self.wiberg_bond_order_totals is not None else [None] * self.num_atoms
-            bound_h = self.bound_hydrogens.tolist() if self.bound_hydrogens is not None else [None] * self.num_atoms
-            node_deg = self.node_degrees.tolist() if self.node_degrees is not None else [None] * self.num_atoms
-            
-            node_data.update({
-                'wiberg_bond_order_totals': wiberg_totals,
-                'bound_hydrogens': bound_h,
-                'node_degrees': node_deg,
-                'electron_populations': electron_pops,
-                'nmb_populations': nmb_pops,
-                'npa_charges': npa_charges,
-                'natural_charges': [None if np.isnan(x) else x for x in natural_charges],
-                'core_populations': [None if np.isnan(x) else x for x in core_populations],
-                'valence_populations': [None if np.isnan(x) else x for x in valence_populations],
-                'rydberg_populations': [None if np.isnan(x) else x for x in rydberg_populations],
-                'total_populations': [None if np.isnan(x) else x for x in total_populations],
-                'core_orbital_occupancies': [None if np.isnan(x) else x for x in core_orbital_occupancies],
-                'core_orbital_energies': [None if np.isnan(x) else x for x in core_orbital_energies],
-                'lone_pair_occupancies': lone_pair_occupancies,
-                'lone_pair_energies': lone_pair_energies,
-            })
-            
-        elif self.graph_type == "DFT":
-            pass
+        def _ensure_list_for_storage(x):
+            if x is None:
+                return [None] * self.num_atoms
+            if hasattr(x, "tolist"):
+                return x.tolist()
+            try:
+                return list(x)
+            except Exception:
+                return [None] * self.num_atoms
+        
+        # Convert numpy arrays to Python lists to avoid binary storage
+        wiberg_totals = _ensure_list_for_storage(self.wiberg_bond_order_totals)
+        bound_h = _ensure_list_for_storage(self.bound_hydrogens)
+        node_deg = _ensure_list_for_storage(self.node_degrees)
+        
+        node_data.update({
+            'wiberg_bond_order_totals': wiberg_totals,
+            'bound_hydrogens': bound_h,
+            'node_degrees': node_deg,
+            'electron_populations': electron_pops,
+            'nmb_populations': nmb_pops,
+            'npa_charges': npa_charges,
+            'natural_charges': [None if np.isnan(x) else x for x in natural_charges],
+            'core_populations': [None if np.isnan(x) else x for x in core_populations],
+            'valence_populations': [None if np.isnan(x) else x for x in valence_populations],
+            'rydberg_populations': [None if np.isnan(x) else x for x in rydberg_populations],
+            'total_populations': [None if np.isnan(x) else x for x in total_populations],
+            'core_orbital_occupancies': [None if np.isnan(x) else x for x in core_orbital_occupancies],
+            'core_orbital_energies': [None if np.isnan(x) else x for x in core_orbital_energies],
+            'lone_pair_occupancies': lone_pair_occupancies,
+            'lone_pair_energies': lone_pair_energies,
+        })
             
         self._precomputed_node_features = node_data
         self._node_features_computed = True
@@ -514,135 +437,43 @@ class DictData:
             'antibonding_orbital_occupancies': [],
             'antibonding_orbital_energies': [],
         }
+    
+        atom_i_indices, atom_j_indices, distances, bond_orders = analyze_bond_orders(
+            self.bond_distance_matrix, self.wiberg_bond_order_matrix, 
+            bond_order_threshold, max_distance
+        )
         
-        if self.graph_type == "NPA":
-            atom_i_indices, atom_j_indices, distances, bond_orders = analyze_bond_orders(
-                self.bond_distance_matrix, self.wiberg_bond_order_matrix, 
-                bond_order_threshold, max_distance
-            )
+        if atom_i_indices:
+            conventional_bond_orders = get_conventional_bond_orders(bond_orders)
             
-            if atom_i_indices: 
-                conventional_bond_orders = get_conventional_bond_orders(bond_orders)
-                
-                bonding_occupancies = []
-                antibonding_occupancies = []
-                num_2c_bds = []
-                
-                for i, j in zip(atom_i_indices, atom_j_indices):
-                    atom_index_i, atom_index_j = i + 1, j + 1
-                    
-                    num_2c_bd = self.number_of_2C_BDs_matrix[i][j] if self.number_of_2C_BDs_matrix is not None else None
-                    num_2c_bds.append(num_2c_bd)
-                    
-                    bd_occupancy = None
-                    ab_occupancy = None
-                    
-                    if self.bonding_CLPOs is not None:
-                        bd_clpo = get_CLPO_entry_by_indices(self.bonding_CLPOs, [atom_index_i, atom_index_j])
-                        if bd_clpo:
-                            bd_occupancy = get_CLPO_information(bd_clpo, "occupancy")
-                            
-                    if self.antibonding_CLPOs is not None:
-                        ab_clpo = get_CLPO_entry_by_indices(self.antibonding_CLPOs, [atom_index_i, atom_index_j])
-                        if ab_clpo:
-                            ab_occupancy = get_CLPO_information(ab_clpo, "occupancy")
-                    
-                    bonding_occupancies.append(bd_occupancy)
-                    antibonding_occupancies.append(ab_occupancy)
-                
-                edge_data['atom_i_list'] = atom_i_indices
-                edge_data['atom_j_list'] = atom_j_indices
-                edge_data['distances'] = distances
-                edge_data['edge_types'] = ["NPA"] * len(atom_i_indices)
-                edge_data['bond_orders'] = bond_orders
-                edge_data['conventional_bond_orders'] = conventional_bond_orders
-                edge_data['num_2C_BDs'] = num_2c_bds
-                edge_data['bonding_orbital_occupancies'] = bonding_occupancies
-                edge_data['bonding_orbital_energies'] = [None] * len(atom_i_indices)
-                edge_data['antibonding_orbital_occupancies'] = antibonding_occupancies
-                edge_data['antibonding_orbital_energies'] = [None] * len(atom_i_indices)
-                        
-        elif self.graph_type == "NBO":
-            atom_i_indices, atom_j_indices, distances, _ = analyze_bond_orders(
-                self.bond_distance_matrix, None, 0.0, max_distance
-            )
+            edge_types = []
+            num_2c_bds = []
+            bonding_occupancies = []
+            bonding_energies = []
+            antibonding_occupancies = []
+            antibonding_energies = []
             
-            valid_bonds = []
-            for idx, (i, j) in enumerate(zip(atom_i_indices, atom_j_indices)):
+            for i, j in zip(atom_i_indices, atom_j_indices):
                 atom_index_i, atom_index_j = i + 1, j + 1
+                
+                num_2c_bd = self.number_of_2C_BDs_matrix[i][j] if self.number_of_2C_BDs_matrix is not None else None
+                num_2c_bds.append(num_2c_bd)
+                
                 bonding_nbo = get_NBO_entry_by_indices(self.bonding_NBOs, [atom_index_i, atom_index_j])
-                if bonding_nbo:
-                    valid_bonds.append(idx)
-            
-            if valid_bonds:
-                valid_i = [atom_i_indices[idx] for idx in valid_bonds]
-                valid_j = [atom_j_indices[idx] for idx in valid_bonds]
-                valid_distances = [distances[idx] for idx in valid_bonds]
+                antibonding_nbo = get_NBO_entry_by_indices(self.antibonding_NBOs, [atom_index_i, atom_index_j])
                 
-                bonding_occupancies = []
-                bonding_energies = []
-                antibonding_occupancies = []
-                antibonding_energies = []
+                edge_type = "NBO" if bonding_nbo else "BO"
+                edge_types.append(edge_type)
                 
-                for i, j in zip(valid_i, valid_j):
-                    atom_index_i, atom_index_j = i + 1, j + 1
-                    bonding_nbo = get_NBO_entry_by_indices(self.bonding_NBOs, [atom_index_i, atom_index_j])
-                    antibonding_nbo = get_NBO_entry_by_indices(self.antibonding_NBOs, [atom_index_i, atom_index_j])
-                    
-                    bonding_occupancies.append(get_NBO_information(bonding_nbo, "occupancy"))
-                    bonding_energies.append(get_NBO_information(bonding_nbo, "energy"))
-                    antibonding_occupancies.append(get_NBO_information(antibonding_nbo, "occupancy") if antibonding_nbo else None)
-                    antibonding_energies.append(get_NBO_information(antibonding_nbo, "energy") if antibonding_nbo else None)
+                bd_occupancy = get_NBO_information(bonding_nbo, "occupancy") if bonding_nbo else None
+                bd_energy = get_NBO_information(bonding_nbo, "energy") if bonding_nbo else None
+                ab_occupancy = get_NBO_information(antibonding_nbo, "occupancy") if antibonding_nbo else None
+                ab_energy = get_NBO_information(antibonding_nbo, "energy") if antibonding_nbo else None
                 
-                edge_data['atom_i_list'] = valid_i
-                edge_data['atom_j_list'] = valid_j
-                edge_data['distances'] = valid_distances
-                edge_data['edge_types'] = ["NBO"] * len(valid_i)
-                edge_data['bond_orders'] = [None] * len(valid_i)
-                edge_data['conventional_bond_orders'] = [None] * len(valid_i)
-                edge_data['num_2C_BDs'] = [None] * len(valid_i)
-                edge_data['bonding_orbital_occupancies'] = bonding_occupancies
-                edge_data['bonding_orbital_energies'] = bonding_energies
-                edge_data['antibonding_orbital_occupancies'] = antibonding_occupancies
-                edge_data['antibonding_orbital_energies'] = antibonding_energies
-                        
-        elif self.graph_type == "QM":
-            atom_i_indices, atom_j_indices, distances, bond_orders = analyze_bond_orders(
-                self.bond_distance_matrix, self.wiberg_bond_order_matrix, 
-                bond_order_threshold, max_distance
-            )
-            
-            if atom_i_indices:
-                conventional_bond_orders = get_conventional_bond_orders(bond_orders)
-                
-                edge_types = []
-                num_2c_bds = []
-                bonding_occupancies = []
-                bonding_energies = []
-                antibonding_occupancies = []
-                antibonding_energies = []
-                
-                for i, j in zip(atom_i_indices, atom_j_indices):
-                    atom_index_i, atom_index_j = i + 1, j + 1
-                    
-                    num_2c_bd = self.number_of_2C_BDs_matrix[i][j] if self.number_of_2C_BDs_matrix is not None else None
-                    num_2c_bds.append(num_2c_bd)
-                    
-                    bonding_nbo = get_NBO_entry_by_indices(self.bonding_NBOs, [atom_index_i, atom_index_j])
-                    antibonding_nbo = get_NBO_entry_by_indices(self.antibonding_NBOs, [atom_index_i, atom_index_j])
-                    
-                    edge_type = "NBO" if bonding_nbo else "BO"
-                    edge_types.append(edge_type)
-                    
-                    bd_occupancy = get_NBO_information(bonding_nbo, "occupancy") if bonding_nbo else None
-                    bd_energy = get_NBO_information(bonding_nbo, "energy") if bonding_nbo else None
-                    ab_occupancy = get_NBO_information(antibonding_nbo, "occupancy") if antibonding_nbo else None
-                    ab_energy = get_NBO_information(antibonding_nbo, "energy") if antibonding_nbo else None
-                    
-                    bonding_occupancies.append(bd_occupancy)
-                    bonding_energies.append(bd_energy)
-                    antibonding_occupancies.append(ab_occupancy)
-                    antibonding_energies.append(ab_energy)
+                bonding_occupancies.append(bd_occupancy)
+                bonding_energies.append(bd_energy)
+                antibonding_occupancies.append(ab_occupancy)
+                antibonding_energies.append(ab_energy)
                 
                 edge_data['atom_i_list'] = atom_i_indices
                 edge_data['atom_j_list'] = atom_j_indices
@@ -656,22 +487,6 @@ class DictData:
                 edge_data['antibonding_orbital_occupancies'] = antibonding_occupancies
                 edge_data['antibonding_orbital_energies'] = antibonding_energies
                         
-        elif self.graph_type == "DFT":
-            atom_i_indices, atom_j_indices, distances, edge_matrix = get_dft_edges(self.bond_distance_matrix, self.smiles, self.num_atoms)
-            
-            if atom_i_indices:
-                edge_data['atom_i_list'] = atom_i_indices
-                edge_data['atom_j_list'] = atom_j_indices
-                edge_data['distances'] = distances
-                edge_data['edge_types'] = ["distance"] * len(atom_i_indices)
-                edge_data['bond_orders'] = [None] * len(atom_i_indices)
-                edge_data['conventional_bond_orders'] = [None] * len(atom_i_indices)
-                edge_data['num_2C_BDs'] = [None] * len(atom_i_indices)
-                edge_data['bonding_orbital_occupancies'] = [None] * len(atom_i_indices)
-                edge_data['bonding_orbital_energies'] = [None] * len(atom_i_indices)
-                edge_data['antibonding_orbital_occupancies'] = [None] * len(atom_i_indices)
-                edge_data['antibonding_orbital_energies'] = [None] * len(atom_i_indices)
-        
         self._precomputed_edge_features = edge_data
         self._edge_features_computed = True
         
@@ -698,14 +513,13 @@ class DictData:
             self._precompute_all_edge_features(bond_order_threshold, max_distance)
         return self._precomputed_edge_features
     
-    def vectorized_extract_charges(self, node_data: dict, indices: list, graph_type: str) -> list:
+    def vectorized_extract_charges(self, node_data: dict, indices: list) -> list:
         """
         Vectorized extraction of charge/population data for specific atoms.
         
         Args:
             node_data (dict): Pre-computed node data dictionary
             indices (list): List of atom indices to extract data for
-            graph_type (str): Type of graph data to extract
             
         Returns:
             list: List of dictionaries containing extracted features for each index
@@ -726,28 +540,21 @@ class DictData:
         
         results = []
         for i in indices:
-            if graph_type == "NPA":
-                result = {
-                    "wiberg_bond_order_total": safe_get(node_data, 'wiberg_bond_order_totals', i),
-                    "bound_hydrogens": safe_get(node_data, 'bound_hydrogens', i),
-                    "node_degree": safe_get(node_data, 'node_degrees', i),
-                    "electron_population": safe_get(node_data, 'electron_populations', i),
-                    "nmb_population": safe_get(node_data, 'nmb_populations', i),
-                    "npa_charge": safe_get(node_data, 'npa_charges', i),
-                }
-            elif graph_type == "NBO":
-                result = {
-                    "natural_charge": safe_get(node_data, 'natural_charges', i),
-                    "core_population": safe_get(node_data, 'core_populations', i),
-                    "valence_population": safe_get(node_data, 'valence_populations', i),
-                    "rydberg_population": safe_get(node_data, 'rydberg_populations', i),
-                    "total_population": safe_get(node_data, 'total_populations', i),
-                    "core_orbital_occupancy": safe_get(node_data, 'core_orbital_occupancies', i),
-                    "core_orbital_energy": safe_get(node_data, 'core_orbital_energies', i),
-                }
-            else:
-                result = {}
-            
+            result = {
+                "wiberg_bond_order_total": safe_get(node_data, 'wiberg_bond_order_totals', i),
+                "bound_hydrogens": safe_get(node_data, 'bound_hydrogens', i),
+                "node_degree": safe_get(node_data, 'node_degrees', i),
+                "electron_population": safe_get(node_data, 'electron_populations', i),
+                "nmb_population": safe_get(node_data, 'nmb_populations', i),
+                "npa_charge": safe_get(node_data, 'npa_charges', i),
+                "natural_charge": safe_get(node_data, 'natural_charges', i),
+                "core_population": safe_get(node_data, 'core_populations', i),
+                "valence_population": safe_get(node_data, 'valence_populations', i),
+                "rydberg_population": safe_get(node_data, 'rydberg_populations', i),
+                "total_population": safe_get(node_data, 'total_populations', i),
+                "core_orbital_occupancy": safe_get(node_data, 'core_orbital_occupancies', i),
+                "core_orbital_energy": safe_get(node_data, 'core_orbital_energies', i),
+            }
             results.append(result)
         
         return results
@@ -783,42 +590,32 @@ class DictData:
                 'covalent_radius': node_data['covalent_radii'][i],
                 'is_carbene_center': node_data.get('is_carbene_center', [False] * num_nodes)[i],
             }
-            
-            if self.graph_type in ["NPA", "QM"]:
-                record.update({
-                    'wiberg_bond_order_total': node_data.get('wiberg_bond_order_totals', [None])[i],
-                    'bound_hydrogens': node_data.get('bound_hydrogens', [None])[i],
-                    'node_degree': node_data.get('node_degrees', [None])[i],
-                    'electron_population': node_data.get('electron_populations', [None])[i],
-                    'nmb_population': node_data.get('nmb_populations', [None])[i],
-                    'npa_charge': node_data.get('npa_charges', [None])[i],
-                })
+            record.update({
+                'wiberg_bond_order_total': node_data.get('wiberg_bond_order_totals', [None])[i],
+                'bound_hydrogens': _as_python_scalar(node_data.get('bound_hydrogens', [None])[i]),
+                'node_degree': _as_python_scalar(node_data.get('node_degrees', [None])[i]),
+                'electron_population': node_data.get('electron_populations', [None])[i],
+                'nmb_population': node_data.get('nmb_populations', [None])[i],
+                'npa_charge': node_data.get('npa_charges', [None])[i],
+            })
+    
+            record.update({
+                'natural_charge': node_data.get('natural_charges', [None])[i],
+                'core_population': node_data.get('core_populations', [None])[i],
+                'valence_population': node_data.get('valence_populations', [None])[i],
+                'rydberg_population': node_data.get('rydberg_populations', [None])[i],
+                'total_population': node_data.get('total_populations', [None])[i],
+                'core_orbital_occupancy': node_data.get('core_orbital_occupancies', [None])[i],
+                'core_orbital_energy': node_data.get('core_orbital_energies', [None])[i],
+            })
                 
-            if self.graph_type in ["NBO", "QM"]:
-                record.update({
-                    'natural_charge': node_data.get('natural_charges', [None])[i],
-                    'core_population': node_data.get('core_populations', [None])[i],
-                    'valence_population': node_data.get('valence_populations', [None])[i],
-                    'rydberg_population': node_data.get('rydberg_populations', [None])[i],
-                    'total_population': node_data.get('total_populations', [None])[i],
-                    'core_orbital_occupancy': node_data.get('core_orbital_occupancies', [None])[i],
-                    'core_orbital_energy': node_data.get('core_orbital_energies', [None])[i],
-                })
+            if node_data.get('lone_pair_occupancies') and i < len(node_data['lone_pair_occupancies']):
+                lone_pair_occ = node_data['lone_pair_occupancies'][i]
+                lone_pair_en = node_data['lone_pair_energies'][i]
                 
-                if node_data.get('lone_pair_occupancies') and i < len(node_data['lone_pair_occupancies']):
-                    lone_pair_occ = node_data['lone_pair_occupancies'][i]
-                    lone_pair_en = node_data['lone_pair_energies'][i]
-                    
-                    for j in range(min(2, len(lone_pair_occ))):
-                        record[f'lone_pair_{j+1}_occupancy'] = lone_pair_occ[j]
-                        record[f'lone_pair_{j+1}_energy'] = lone_pair_en[j]
-                        
-            if self.graph_type == "NPA":
-                record.update({
-                    'electron_population': node_data.get('electron_populations', [None])[i],
-                    'nmb_population': node_data.get('nmb_populations', [None])[i],
-                    'npa_charge': node_data.get('npa_charges', [None])[i],
-                })
+                for j in range(min(2, len(lone_pair_occ))):
+                    record[f'lone_pair_{j+1}_occupancy'] = lone_pair_occ[j]
+                    record[f'lone_pair_{j+1}_energy'] = lone_pair_en[j]
                 
             db_records.append(record)
             
@@ -852,7 +649,6 @@ class DictData:
                 'edge_type': edge_data['edge_types'][i],
                 'bond_order': edge_data['bond_orders'][i],
                 'conventional_bond_order': edge_data['conventional_bond_orders'][i],
-                "is_carbene_center": node_data['is_carbene_center'][i] if node_data.get('is_carbene_center') else False,
                 'num_2C_BDs': edge_data['num_2C_BDs'][i],
                 'bonding_orbital_occupancy': edge_data['bonding_orbital_occupancies'][i],
                 'bonding_orbital_energy': edge_data['bonding_orbital_energies'][i],
@@ -888,7 +684,6 @@ class GraphBase:
     
     def __init__(self, qm_data: Optional[DictData] = None):
         self.qm_data = qm_data
-        self.graph_type = qm_data.graph_type if qm_data is not None else None
         
     def _batch_extract(self, data_dict: dict, keys: list, default=None) -> dict:
         """
@@ -974,7 +769,6 @@ class GraphInfo(GraphBase):
             dict: Dictionary containing graph-level metadata.
         """
         graph_info_dict = {
-            "graph_type": self.graph_type,
             "id": self.id,
             "smiles": self.smiles,
             "formula": self.formula,
@@ -1032,33 +826,16 @@ class Node(GraphBase):
         
         # Batch assign graph-type specific features using mapping to minimize conditional statements
         graph_type_mappings = {
-            "NPA": {
-                'wiberg_matrix': 'wiberg_bond_order_matrix',
-                'wiberg_bond_order_totals': 'wiberg_bond_order_totals',
-                'bound_hydrogens': 'bound_hydrogens',
-                'node_degrees': 'node_degrees',
-                'lone_pair_CLPOs': 'lone_pair_CLPOs',
-                'natural_population_analysis_charges': 'natural_population_analysis_charges',
-                'natural_electron_configuration': 'natural_electron_configuration'
-            },
-            "NBO": {
-                'core_NBOs': 'core_NBOs',
-                'lone_pair_NBOs': 'lone_pair_NBOs',
-                'natural_population_analysis': 'natural_population_analysis'
-            },
-            "QM": {
-                'wiberg_matrix': 'wiberg_bond_order_matrix',
-                'wiberg_bond_order_totals': 'wiberg_bond_order_totals',
-                'bound_hydrogens': 'bound_hydrogens',
-                'node_degrees': 'node_degrees',
-                'core_NBOs': 'core_NBOs',
-                'lone_pair_NBOs': 'lone_pair_NBOs',
-                'natural_population_analysis': 'natural_population_analysis'
-            }
+            'wiberg_matrix': 'wiberg_bond_order_matrix',
+            'wiberg_bond_order_totals': 'wiberg_bond_order_totals',
+            'bound_hydrogens': 'bound_hydrogens',
+            'node_degrees': 'node_degrees',
+            'core_NBOs': 'core_NBOs',
+            'lone_pair_NBOs': 'lone_pair_NBOs',
+            'natural_population_analysis': 'natural_population_analysis'
         }
         
-        if self.graph_type in graph_type_mappings:
-            self._batch_extract_to_attrs(qm_data.to_dict(), graph_type_mappings[self.graph_type])
+        self._batch_extract_to_attrs(qm_data.to_dict(), graph_type_mappings)
 
     def get_node_features(self) -> list[dict]:
         """
@@ -1067,96 +844,39 @@ class Node(GraphBase):
         Returns:
             list[dict]: List of dictionaries, one per atom, containing its features.
         """
-        node_data = self.qm_data.get_precomputed_node_features()
-        if not node_data or not node_data['atom_indices']:
+        if not self.qm_data or not self.qm_data.num_atoms:
             return []
-        if self.graph_type == "catalyst" or getattr(self.qm_data, "homo_lumo", None) is not None:
-            node_list = []
-            num_nodes = len(node_data['atom_indices'])
 
-            for i in range(num_nodes):
-                node = _default_node_record(i, self.qm_data)
-                node["graph_type"] = self.graph_type
-                node_list.append(node)
-
-            all_keys = set().union(*(node.keys() for node in node_list))
-            for node in node_list:
-                for key in all_keys:
-                    node.setdefault(key, None)
-            return node_list
+        node_data = self.qm_data.get_precomputed_node_features()
+        if not node_data or not node_data.get('atom_indices'):
+            return []
 
         node_list = []
-        num_nodes = len(node_data['atom_indices'])
-        
-        for i in range(num_nodes):
-            node = {
-                "atom_index": node_data['atom_indices'][i],
-                "atomic_number": node_data['atomic_numbers'][i],
-                "atom_label": node_data['atom_labels'][i],
-                "position": node_data['positions'][i],
-                "atomic_mass": node_data['atomic_masses'][i],
-                "electronegativity": node_data['electronegativities'][i],
-                "covalent_radius": node_data['covalent_radii'][i],
-                "is_carbene_center": node_data['is_carbene_center'][i] if node_data.get('is_carbene_center') else False,
-            }
-            
-            if self.graph_type == "NPA":
-                node.update({
-                    "wiberg_bond_order_total": node_data['wiberg_bond_order_totals'][i] if node_data['wiberg_bond_order_totals'] else None,
-                    "bound_hydrogens": node_data['bound_hydrogens'][i] if node_data['bound_hydrogens'] else None,
-                    "node_degree": node_data['node_degrees'][i] if node_data['node_degrees'] else None,
-                    "electron_population": node_data['electron_populations'][i] if node_data['electron_populations'] else None,
-                    "nmb_population": node_data['nmb_populations'][i] if node_data['nmb_populations'] else None,
-                    "npa_charge": node_data['npa_charges'][i] if node_data['npa_charges'] else None,
-                })
-                
-            elif self.graph_type == "NBO":
-                nbo_features = self.qm_data.vectorized_extract_charges(node_data, [i], 'NBO')[0]
-                node.update(nbo_features)
-                
-                if node_data['lone_pair_occupancies'] and i < len(node_data['lone_pair_occupancies']):
-                    lone_pair_occ = node_data['lone_pair_occupancies'][i]
-                    lone_pair_en = node_data['lone_pair_energies'][i]
-                    
-                    if lone_pair_occ is not None and lone_pair_en is not None:
-                        if len(lone_pair_occ) == 2 and lone_pair_occ[0] is not None and lone_pair_occ[1] is None:
-                            node["lone_pair_occupancy"] = lone_pair_occ[0]
-                            node["lone_pair_energy"] = lone_pair_en[0]
-                        else:
-                            for j, (occ, en) in enumerate(zip(lone_pair_occ, lone_pair_en), 1):
-                                if occ is not None:
-                                    node[f"lone_pair_{j}_occupancy"] = occ
-                                    node[f"lone_pair_{j}_energy"] = en
-                
-            elif self.graph_type == "QM":
-                npa_features = self.qm_data.vectorized_extract_charges(node_data, [i], 'NPA')[0]
-                nbo_features = self.qm_data.vectorized_extract_charges(node_data, [i], 'NBO')[0]
-                node.update(npa_features)
-                node.update(nbo_features)
-                
-                if node_data['lone_pair_occupancies'] and i < len(node_data['lone_pair_occupancies']):
-                    lone_pair_occ = node_data['lone_pair_occupancies'][i]
-                    lone_pair_en = node_data['lone_pair_energies'][i]
-                    
-                    max_lone_pairs = 2
-                    for j in range(1, max_lone_pairs + 1):
-                        if j <= len(lone_pair_occ):
-                            node[f"lone_pair_{j}_occupancy"] = lone_pair_occ[j-1]
-                            node[f"lone_pair_{j}_energy"] = lone_pair_en[j-1]
-                        else:
-                            node[f"lone_pair_{j}_occupancy"] = None
-                            node[f"lone_pair_{j}_energy"] = None
-                            
-            elif self.graph_type == "DFT":
-                pass
-                
+        for i in range(self.qm_data.num_atoms):
+            node = _default_node_record(i, self.qm_data)
+            node.update({
+                'electron_population': _safe_get(node_data.get('electron_populations'), i),
+                'nmb_population': _safe_get(node_data.get('nmb_populations'), i),
+                'npa_charge': _safe_get(node_data.get('npa_charges'), i),
+                'natural_charge': _safe_get(node_data.get('natural_charges'), i),
+                'core_population': _safe_get(node_data.get('core_populations'), i),
+                'valence_population': _safe_get(node_data.get('valence_populations'), i),
+                'rydberg_population': _safe_get(node_data.get('rydberg_populations'), i),
+                'total_population': _safe_get(node_data.get('total_populations'), i),
+                'core_orbital_occupancy': _safe_get(node_data.get('core_orbital_occupancies'), i),
+                'core_orbital_energy': _safe_get(node_data.get('core_orbital_energies'), i),
+                'lone_pair_1_occupancy': _safe_get(_safe_get(node_data.get('lone_pair_occupancies'), i), 0),
+                'lone_pair_1_energy': _safe_get(_safe_get(node_data.get('lone_pair_energies'), i), 0),
+                'lone_pair_2_occupancy': _safe_get(_safe_get(node_data.get('lone_pair_occupancies'), i), 1),
+                'lone_pair_2_energy': _safe_get(_safe_get(node_data.get('lone_pair_energies'), i), 1),
+            })
             node_list.append(node)
-            
+
         all_keys = set().union(*(node.keys() for node in node_list))
         for node in node_list:
             for key in all_keys:
                 node.setdefault(key, None)
-                
+
         return node_list
     
     def get_node_features_ML(self) -> list[dict]:
@@ -1208,26 +928,13 @@ class Edge(GraphBase):
         self.num_nodes = qm_data.num_atoms
         
         edge_type_mappings = {
-            "NPA": {
-                'wiberg_matrix': 'wiberg_bond_order_matrix',
-                'number_of_2C_BDs_matrix': 'number_of_2C_BDs_matrix',
-                'bonding_CLPOs': 'bonding_CLPOs',
-                'antibonding_CLPOs': 'antibonding_CLPOs'
-            },
-            "NBO": {
-                'bonding_NBOs': 'bonding_NBOs',
-                'antibonding_NBOs': 'antibonding_NBOs'
-            },
-            "QM": {
-                'wiberg_matrix': 'wiberg_bond_order_matrix',
-                'number_of_2C_BDs_matrix': 'number_of_2C_BDs_matrix',
-                'bonding_NBOs': 'bonding_NBOs',
-                'antibonding_NBOs': 'antibonding_NBOs'
-            }
+            'wiberg_matrix': 'wiberg_bond_order_matrix',
+            'number_of_2C_BDs_matrix': 'number_of_2C_BDs_matrix',
+            'bonding_NBOs': 'bonding_NBOs',
+            'antibonding_NBOs': 'antibonding_NBOs'
         }
         
-        if self.graph_type in edge_type_mappings:
-            self._batch_extract_to_attrs(qm_data.to_dict(), edge_type_mappings[self.graph_type])
+        self._batch_extract_to_attrs(qm_data.to_dict(), edge_type_mappings)
             
     def get_edge_features(self, bond_order_threshold: float = 0.4, max_distance: float = 3.0) -> list[dict]:
         """
@@ -1361,13 +1068,23 @@ class Targets(GraphBase):
             self.dipole_moment = None
             self.IE_EA = None
             self.polarizability = None
+            self.natural_minimal_basis = None
+            self.natural_rydberg_basis = None
+            self.total_core_population = None
+            self.total_valence_population = None
+            self.total_rydberg_population = None
+            self.total_population = None
             self.frequencies = None
             self.num_frequencies = 0
-            self.lowest_frequency = None
-            self.highest_frequency = None
             self.potential_energy_correction = None
             self.enthalpy_correction = None
             self.gibbs_free_energy_correction = None
+            self.natural_minimal_basis = None
+            self.natural_rydberg_basis = None
+            self.total_core_population = None
+            self.total_valence_population = None
+            self.total_rydberg_population = None
+            self.total_population = None
             return
 
         self.homo_lumo = qm_data.homo_lumo
@@ -1378,24 +1095,21 @@ class Targets(GraphBase):
         self.IE_EA = qm_data.IE_EA
         self.polarizability = qm_data.polarizability
         
-        if self.graph_type in ["NBO", "QM"]:
-            npa_totals = qm_data.natural_population_totals or {}
-            npa_total_keys = {
-                'natural_minimal_basis': 'natural_minimal_basis',
-                'natural_rydberg_basis': 'natural_rydberg_basis',
-                'total_core_population': 'total_core_population',
-                'total_valence_population': 'total_valence_population',
-                'total_rydberg_population': 'total_rydberg_population',
-                'total_population': 'total_population'
-            }
-            npa_total_data = {key: npa_totals.get(dict_key) for key, dict_key in npa_total_keys.items()}
-            for attr, value in npa_total_data.items():
-                setattr(self, attr, value)
+        npa_totals = getattr(qm_data, 'natural_population_totals', None) or {}
+        npa_total_keys = {
+            'natural_minimal_basis': 'natural_minimal_basis',
+            'natural_rydberg_basis': 'natural_rydberg_basis',
+            'total_core_population': 'total_core_population',
+            'total_valence_population': 'total_valence_population',
+            'total_rydberg_population': 'total_rydberg_population',
+            'total_population': 'total_population'
+        }
+        npa_total_data = {key: npa_totals.get(dict_key) for key, dict_key in npa_total_keys.items()}
+        for attr, value in npa_total_data.items():
+            setattr(self, attr, value)
 
         self.frequencies = qm_data.frequencies
         self.num_frequencies = len(qm_data.frequencies) if qm_data.frequencies else 0
-        self.lowest_frequency = get_lowest_vibrational_frequency(qm_data.frequencies) if qm_data.frequencies else None
-        self.highest_frequency = get_highest_vibrational_frequency(qm_data.frequencies) if qm_data.frequencies else None
 
         self._extract_indexed_values(qm_data.moments_of_inertia, [0, 1, 2], 'moment')
         self._extract_indexed_values(qm_data.rotational_constants, [0, 1, 2], 'rot')  
@@ -1486,8 +1200,6 @@ class Targets(GraphBase):
             **self._flatten_catalyst_targets(),
             "frequencies": self.frequencies,
             "num_frequencies": self.num_frequencies,
-            "lowest_frequency": self.lowest_frequency,
-            "highest_frequency": self.highest_frequency,
             "moment_1": self.moment_1,
             "moment_2": self.moment_2,
             "moment_3": self.moment_3,
@@ -1531,8 +1243,6 @@ class Targets(GraphBase):
         ML_targets_dict = {
             **self._flatten_catalyst_targets(),
             "num_frequencies": self.num_frequencies,
-            "lowest_frequency": self.lowest_frequency,
-            "highest_frequency": self.highest_frequency,
             "moment_1": self.moment_1,
             "moment_2": self.moment_2,
             "moment_3": self.moment_3,

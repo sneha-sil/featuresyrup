@@ -6,17 +6,8 @@ import mmap
 from typing import Union, List, Optional, Tuple
 from contextlib import contextmanager
 from pathlib import Path
-
-try:
-    import morfeus
-except ImportError:  # pragma: no cover - optional dependency
-    morfeus = None
-
-try:
-    from dscribe.descriptors import ACSF, SOAP
-except ImportError:  # pragma: no cover - optional dependency
-    ACSF = None
-    SOAP = None
+import morfeus  
+from ase import Atoms
     
 # Pre-compiled regex patterns at module level with regex module over standard re
 PATTERNS = {
@@ -1570,6 +1561,13 @@ def extract_npa_charges(charge_tuples: list) -> tuple:
         return [], [], []
         
     charge_array = np.array(charge_tuples)
+    # Handle 1D flat arrays (e.g., [e1,n1,c1,e2,n2,c2,...]) by reshaping
+    if charge_array.ndim == 1:
+        if len(charge_array) % 3 == 0:
+            charge_array = charge_array.reshape((-1, 3))
+        else:
+            # Fallback: return three copies of the flat list to avoid crashes
+            return (charge_array.tolist(), charge_array.tolist(), charge_array.tolist())
     return (charge_array[:, 0].tolist(), 
             charge_array[:, 1].tolist(), 
             charge_array[:, 2].tolist())
@@ -2031,7 +2029,9 @@ def calculate_morfeus_descriptors(xyz_file: str, smiles: str) -> dict[str, float
 
 def calculate_ACSF_values(xyz_file: str, smiles: str) -> dict:
     """Calculate ACSF descriptors for the carbene center."""
-    if ACSF is None:
+    try:
+        from dscribe.descriptors import ACSF
+    except Exception:
         raise ImportError("dscribe is required for calculate_ACSF_values")
 
     acsf = ACSF(
@@ -2054,17 +2054,21 @@ def calculate_ACSF_values(xyz_file: str, smiles: str) -> dict:
 
     carbene_info = identify_carbene_center(Chem.MolFromSmiles(smiles))
     atom_list, atomic_numbers, xyz_coordinates, num_atoms, atom_labels = read_xyz_file(xyz_file)
+    atomic_masses, atomic_symbols = get_atomic_data_dicts()
+    symbols = [atomic_symbols[number] for number in atomic_numbers]
+    system = Atoms(symbols=symbols, positions=xyz_coordinates)
 
-    acsf_features = acsf.create(
-        atoms=atom_list,
-        centers=[carbene_info["carbene"]] if carbene_info is not None else [],
-    )[0]
-
-    return {"acsf_features": list(acsf_features)}
+    # Create ACSF for all atom centers so we can map descriptors per-atom
+    centers = list(range(num_atoms))
+    features = acsf.create(system=system, centers=centers)
+    # features is (num_centers, n_features)
+    return {"acsf_features": [list(f) for f in features]}
 
 def calculate_SOAP_values(xyz_file: str, smiles: str) -> dict:
     """Calculate SOAP descriptors for the carbene center."""
-    if SOAP is None:
+    try:
+        from dscribe.descriptors import SOAP
+    except Exception:
         raise ImportError("dscribe is required for calculate_SOAP_values")
 
     soap = SOAP(
@@ -2078,13 +2082,13 @@ def calculate_SOAP_values(xyz_file: str, smiles: str) -> dict:
 
     atom_list, atomic_numbers, xyz_coordinates, num_atoms, atom_labels = read_xyz_file(xyz_file)
     carbene_info = identify_carbene_center(Chem.MolFromSmiles(smiles))
+    atomic_masses, atomic_symbols = get_atomic_data_dicts()
+    symbols = [atomic_symbols[number] for number in atomic_numbers]
+    system = Atoms(symbols=symbols, positions=xyz_coordinates)
 
-    soap_features = soap.create(
-        atoms=atom_list,
-        centers=[carbene_info["carbene"]] if carbene_info is not None else [],
-    )[0]
-
-    return {"soap_features": list(soap_features)}
+    centers = list(range(num_atoms))
+    features = soap.create(system=system, centers=centers)
+    return {"soap_features": [list(f) for f in features]}
 
 def get_IR_frequencies(output_file: str) -> dict:
     """
@@ -2271,11 +2275,15 @@ def get_Fukui_indices(cationic_nbo, anionic_nbo, neutral_nbo: str) -> dict:
     f_zero = [(f_plus[i] + f_minus[i]) / 2 for i in range(len(q_neutral))]
 
     return {
+        "f_plus": f_plus,
+        "f_minus": f_minus,
+        "f_zero": f_zero,
+        # Keep a nested view for callers that already expect the older shape.
         "fukui_indices": {
             "f_plus": f_plus,
             "f_minus": f_minus,
             "f_zero": f_zero,
-        }
+        },
     }
     
 def _extract_final_single_point_energy(output_file: str) -> float:
@@ -2335,17 +2343,40 @@ def get_all_catalyst_data(smiles, xyz_file, neutral_output, cationic_output, ani
     """
     data = {}
     data['homo_lumo'] = parse_orbital_energies(homo_lumo_output)
-    data['morfeus'] = calculate_morfeus_descriptors(xyz_file, smiles)
-    data['ACSF'] = calculate_ACSF_values(xyz_file, smiles)
-    data['SOAP'] = calculate_SOAP_values(xyz_file, smiles)
+    try:
+        data['morfeus'] = calculate_morfeus_descriptors(xyz_file, smiles)
+    except Exception as e:
+        data['morfeus'] = None
+        print(f"Warning: Morfeus calculation failed: {e}")
+    try:
+        acsf_res = calculate_ACSF_values(xyz_file, smiles)
+        data['ACSF'] = acsf_res.get('acsf_features') if isinstance(acsf_res, dict) else acsf_res
+    except Exception as e:
+        data['ACSF'] = None
+        print(f"Warning: ACSF calculation failed: {e}")
+
+    try:
+        soap_res = calculate_SOAP_values(xyz_file, smiles)
+        data['SOAP'] = soap_res.get('soap_features') if isinstance(soap_res, dict) else soap_res
+    except Exception as e:
+        data['SOAP'] = None
+        print(f"Warning: SOAP calculation failed: {e}")
     data['IR_stats'] = get_IR_frequencies(IR_output)[1]
     if nmr_output is not None and Path(nmr_output).exists():
         data['NMR_shieldings'] = get_NMR_shieldings(nmr_output)
     if dipole_polarizability_output is not None and Path(dipole_polarizability_output).exists():
         data['dipole_moment'] = get_dipole_moment(dipole_polarizability_output)
         data['polarizability'] = get_isotropic_polarizability(dipole_polarizability_output)
-    data['Fukui_indices'] = get_Fukui_indices(cationic_nbo, anionic_nbo, neutral_nbo)
-    data['IE_EA'] = get_IE_EA(cationic_output, anionic_output, neutral_output)
+    try:
+        data['Fukui_indices'] = get_Fukui_indices(cationic_nbo, anionic_nbo, neutral_nbo)
+    except Exception as e:
+        data['Fukui_indices'] = None
+        print(f"Warning: Fukui index calculation failed: {e}")
+    try:
+        data['IE_EA'] = get_IE_EA(cationic_output, anionic_output, neutral_output)
+    except Exception as e:
+        data['IE_EA'] = None
+        print(f"Warning: IE/EA calculation failed: {e}")
     return data
 
 
@@ -2428,8 +2459,8 @@ def generate_qm_data_dict(
     formula = get_formula(smiles)
     molecular_mass = get_molecular_weight(smiles)
     
+
     data = {
-        "graph_type": "catalyst",
         "id": mol_id,
         "smiles": smiles,
         "formula": formula,
@@ -2443,18 +2474,40 @@ def generate_qm_data_dict(
     shermo_data = get_all_shermo_data(shermo_output)
     data.update(shermo_data)
     
-    if janpa_output and janpa_output.exists():
-        janpa_data = get_all_janpa_data(janpa_output)
-        data.update(janpa_data)
+    janpa_data = get_all_janpa_data(janpa_output)
     
-    if nbo_output and nbo_output.exists():
-        nbo_data = get_all_nbo_data(nbo_output)
-        data.update(nbo_data)
-        
+    data.update(janpa_data)
+    data['wiberg_bond_order_matrix'] = janpa_data.get('wiberg_matrix')
+    data['number_of_2C_BDs_matrix'] = janpa_data.get('bond_matrix')
+    data['natural_population_analysis_charges'] = janpa_data.get('npa_charges')
+    e_p, n_p, npa_c = extract_npa_charges(data['natural_population_analysis_charges'])
+    data['electron_populations'] = e_p
+    data['nmb_populations'] = n_p
+    data['npa_charges'] = npa_c
+    data['orbital_occupancies'] = janpa_data.get('orbital_occupancies')
+    data['CLPO_data'] = janpa_data.get('clpo_data')
+    
+    nbo_data = get_all_nbo_data(nbo_output)
+    data.update(nbo_data)
+    
     catalyst_data = get_all_catalyst_data(smiles, xyz_file, neutral_output, cationic_output, anionic_output, neutral_nbo, cationic_nbo, anionic_nbo, nmr_output, IR_output, dipole_polarizability_output, homo_lumo_output)
     data.update(catalyst_data)
-        
-    # Clear cache to free memory
+    ie_ea = catalyst_data.get("IE_EA")
+
+    if not ie_ea:
+        # Build from top-level keys if present (fallback)
+        ie_ea = {
+            'ionization_energy': catalyst_data.get('ionization_energy'),
+            'electron_affinity': catalyst_data.get('electron_affinity'),
+            'hardness': catalyst_data.get('hardness'),
+            'chemical_potential': catalyst_data.get('chemical_potential'),
+            'electronegativity': catalyst_data.get('electronegativity'),
+            'electrophilicity': catalyst_data.get('electrophilicity'),
+        }
+
+    data["IE_EA"] = ie_ea
+    
+    
     clear_file_cache()
     
     return data

@@ -42,6 +42,13 @@ def json_wrapper(value):
     return value
 
 
+def scalar_wrapper(value):
+    """Convert NumPy scalar values to native Python scalars for SQLite storage."""
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
 CATALYST_NODE_COLUMNS = [
     "ACSF_values",
     "SOAP_values",
@@ -315,7 +322,6 @@ class MolecularGraph:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS graphs (
                 graph_id TEXT PRIMARY KEY,
-                graph_type TEXT NOT NULL,
                 smiles TEXT,
                 formula TEXT,
                 molecular_mass REAL,
@@ -438,8 +444,6 @@ class MolecularGraph:
             graph_id TEXT,
             frequencies TEXT,  -- JSON array of frequencies
             num_frequencies INTEGER,
-            lowest_frequency REAL,
-            highest_frequency REAL,
             moment_1 REAL,
             moment_2 REAL,
             moment_3 REAL,
@@ -535,7 +539,6 @@ class MolecularGraph:
         cls._create_ML_views(cursor)
 
         # Create indices for efficient queries
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_graph_type ON graphs (graph_type)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_atomic_number ON nodes (atomic_number)')
         
         # Only create bond_order index if bond_order column exists
@@ -642,8 +645,6 @@ class MolecularGraph:
         ml_target_select = '''
             graph_id,
             num_frequencies,
-            lowest_frequency,
-            highest_frequency,
             moment_1, moment_2, moment_3,
             rot_1, rot_2, rot_3,
             rot_temp_1, rot_temp_2, rot_temp_3,
@@ -744,12 +745,11 @@ class MolecularGraph:
             # Insert graph-level data
             cursor.execute('''
                 INSERT OR REPLACE INTO graphs 
-                (graph_id, graph_type, smiles, formula, molecular_mass, num_atoms, 
+                (graph_id, smiles, formula, molecular_mass, num_atoms, 
                  num_electrons, charge, num_bonds)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 self.id,
-                graph_features.get('graph_type'),
                 smiles_value,
                 graph_features.get('formula'),
                 graph_features.get('molecular_mass'),
@@ -797,9 +797,9 @@ class MolecularGraph:
                 ]
                 
                 node_data.extend([
-                    node.get('wiberg_bond_order_total'),
-                    node.get('bound_hydrogens'),
-                    node.get('node_degree'),
+                    scalar_wrapper(node.get('wiberg_bond_order_total')),
+                    scalar_wrapper(node.get('bound_hydrogens')),
+                    scalar_wrapper(node.get('node_degree')),
                     node.get('electron_population'),
                     node.get('nmb_population'),
                     node.get('npa_charge'),
@@ -914,8 +914,6 @@ class MolecularGraph:
                 self.id,
                 json.dumps(target_features.get('frequencies', [])),
                 target_features.get('num_frequencies'),
-                target_features.get('lowest_frequency'),
-                target_features.get('highest_frequency'),
                 target_features.get('moment_1'),
                 target_features.get('moment_2'),
                 target_features.get('moment_3'),
@@ -939,12 +937,6 @@ class MolecularGraph:
             ]
             
             target_data.extend([
-                target_features.get('natural_minimal_basis'),
-                target_features.get('natural_rydberg_basis'),
-                target_features.get('total_core_population'),
-                target_features.get('total_valence_population'),
-                target_features.get('total_rydberg_population'),
-                target_features.get('total_population'),
                 target_features.get('HOMO'),
                 target_features.get('LUMO'),
                 target_features.get('HOMO_LUMO_gap'),
@@ -983,7 +975,13 @@ class MolecularGraph:
                 target_features.get('hardness'),
                 target_features.get('chemical_potential'),
                 target_features.get('electronegativity'),
-                target_features.get('electrophilicity')
+                target_features.get('electrophilicity'),
+                target_features.get('natural_minimal_basis'),
+                target_features.get('natural_rydberg_basis'),
+                target_features.get('total_core_population'),
+                target_features.get('total_valence_population'),
+                target_features.get('total_rydberg_population'),
+                target_features.get('total_population')
             ])
             
             placeholders = ','.join(['?'] * len(target_data))
@@ -1028,7 +1026,7 @@ class MolecularGraph:
                 logger.debug(f"No labels data for {self.id}: hasattr={hasattr(self, '_labels_data')}, data={getattr(self, '_labels_data', None)}")
             
             conn.commit()
-            logger.info(f"\tSaved graph {self.id} ({self._qm_data.graph_type}) to database")
+            logger.info(f"\tSaved graph {self.id} to database")
             
         except Exception as e:
             logger.error(f"Database transaction failed for {self.id}: {e}")
@@ -1060,7 +1058,6 @@ class MolecularGraph:
                 raise ValueError(f"Graph {graph_id} not found in database")
             
             graph_row = graph_data.iloc[0]
-            graph_type = graph_row['graph_type']
             
             # Load nodes
             nodes_query = "SELECT * FROM nodes WHERE graph_id = ? ORDER BY atom_index"
@@ -1094,7 +1091,6 @@ class MolecularGraph:
             return [row.get(column_name) for row in rows] if rows else None
 
         qm_data = {
-            "graph_type": "catalyst",
             "id": graph_id,
             "smiles": graph_row.get("smiles"),
             "formula": graph_row.get("formula"),
@@ -1190,8 +1186,6 @@ class MolecularGraph:
             },
             "frequencies": _maybe_json(target_row.get("frequencies")),
             "num_frequencies": target_row.get("num_frequencies"),
-            "lowest_frequency": target_row.get("lowest_frequency"),
-            "highest_frequency": target_row.get("highest_frequency"),
             "moment_1": target_row.get("moment_1"),
             "moment_2": target_row.get("moment_2"),
             "moment_3": target_row.get("moment_3"),
@@ -1291,14 +1285,12 @@ class MolecularGraph:
     
     @classmethod
     def get_ml_data(cls, db_path: Union[str, Path], 
-                   graph_type: Optional[str] = None,
                    graph_ids: Optional[List[str]] = None) -> Dict[str, pd.DataFrame]:
         """
         Get ML-ready data (quantitative features only) from database views.
         
         Args:
             db_path: Path to SQLite database file
-            graph_type: Filter by specific graph type
             graph_ids: Filter by specific graph IDs
             
         Returns:
@@ -1309,11 +1301,7 @@ class MolecularGraph:
         try:
             where_conditions = []
             params = []
-            
-            if graph_type:
-                where_conditions.append("graph_type = ?")
-                params.append(graph_type)
-            
+                        
             if graph_ids:
                 placeholders = ','.join('?' * len(graph_ids))
                 where_conditions.append(f"graph_id IN ({placeholders})")
@@ -1333,7 +1321,7 @@ class MolecularGraph:
             )
             
             # Get node-level ML features
-            if graph_ids or graph_type:
+            if graph_ids:
                 ml_data['nodes'] = pd.read_sql_query(
                     f"SELECT * FROM ml_nodes{where_clause}", 
                     conn, params=params
@@ -1342,7 +1330,7 @@ class MolecularGraph:
                 ml_data['nodes'] = pd.read_sql_query("SELECT * FROM ml_nodes", conn)
             
             # Get edge-level ML features  
-            if graph_ids or graph_type:
+            if graph_ids:
                 ml_data['edges'] = pd.read_sql_query(
                     f"SELECT * FROM ml_edges{where_clause}", 
                     conn, params=params
@@ -1376,13 +1364,6 @@ class MolecularGraph:
         
         try:
             summary = {}
-            
-            # Graph type distribution
-            graph_types = pd.read_sql_query(
-                "SELECT graph_type, COUNT(*) as count FROM graphs GROUP BY graph_type", 
-                conn
-            )
-            summary['graph_types'] = dict(zip(graph_types['graph_type'], graph_types['count']))
             
             # Molecular mass distribution
             mass_stats = pd.read_sql_query(
@@ -1423,26 +1404,23 @@ class MolecularGraph:
     @classmethod
     def export_ml_features(cls, db_path: Union[str, Path], 
                           output_dir: Union[str, Path],
-                          graph_type: Optional[str] = None) -> None:
+                          ) -> None:
         """
         Export ML-ready features to CSV files.
         
         Args:
             db_path: Path to SQLite database file
             output_dir: Directory to save CSV files
-            graph_type: Optional graph type filter
         """
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        ml_data = cls.get_ml_data(db_path, graph_type=graph_type)
+        ml_data = cls.get_ml_data(db_path)
         
         # Export each feature level
         for level, df in ml_data.items():
             if not df.empty:
                 filename = f"ml_{level}"
-                if graph_type:
-                    filename += f"_{graph_type}"
                 filename += ".csv"
                 
                 filepath = output_dir / filename
@@ -1452,8 +1430,6 @@ class MolecularGraph:
         # Export combined dataset for easy loading
         if all(not df.empty for df in ml_data.values()):
             combined_filename = "ml_combined"
-            if graph_type:
-                combined_filename += f"_{graph_type}"
             combined_filename += ".pkl"
             
             combined_path = output_dir / combined_filename
@@ -1555,7 +1531,6 @@ class MolecularGraph:
             'graph_id': self.id,
             'num_atoms': len(node_features),
             'num_bonds': len(edge_features),
-            'graph_type': self._qm_data.graph_type,
             'formula': self.get_graph_features().get('formula'),
             'molecular_mass': self.get_graph_features().get('molecular_mass')
         }
@@ -1838,14 +1813,12 @@ class GraphDatabase:
         finally:
             conn.close()
     
-    def get_ml_dataset(self, label_name: str = 'target',
-                      graph_type: Optional[str] = None) -> Tuple[List['MolecularGraph'], List[float]]:
+    def get_ml_dataset(self, label_name: str = 'target') -> Tuple[List['MolecularGraph'], List[float]]:
         """
         Get molecular graphs and labels for ML training.
         
         Args:
             label_name: Name of label to retrieve
-            graph_type: Filter by graph type (optional)
             
         Returns:
             Tuple of (graphs, labels) lists
@@ -1862,10 +1835,6 @@ class GraphDatabase:
                 WHERE l.label_name = ?
             '''
             params = [label_name]
-            
-            if graph_type:
-                query += ' AND g.graph_type = ?'
-                params.append(graph_type)
             
             cursor.execute(query, params)
             results = cursor.fetchall()
@@ -1920,6 +1889,59 @@ class GraphDatabase:
         logger.info(f"\txported {len(df)} {feature_level} features to {output_path}")
         
         conn.close()
+
+    @classmethod
+    def map_db_columns_to_code(cls, db_path: Union[str, Path], source_dir: Union[str, Path]):
+        """
+        Inspect the SQLite schema and scan the source tree for occurrences of each
+        column name so we can map DB columns to variables/fields used in code.
+
+        Args:
+            db_path: path to the SQLite DB file
+            source_dir: path to the project `src/` directory to scan
+
+        Returns:
+            Dict: {table_name: {column_name: [list of file:line occurrences]}}
+        """
+        db_path = Path(db_path)
+        source_dir = Path(source_dir)
+        if not db_path.exists():
+            raise FileNotFoundError(f"Database file not found: {db_path}")
+        if not source_dir.exists():
+            raise FileNotFoundError(f"Source directory not found: {source_dir}")
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        mapping = {}
+        try:
+            # Get list of tables
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [r[0] for r in cursor.fetchall()]
+
+            for table in tables:
+                mapping[table] = {}
+                cursor.execute(f"PRAGMA table_info({table})")
+                cols = cursor.fetchall()  # cid, name, type, notnull, dflt_value, pk
+                col_names = [c[1] for c in cols]
+
+                # For each column name, search the source tree for usages
+                for col in col_names:
+                    occurrences = []
+                    # Walk source dir and grep simple text matches
+                    for p in source_dir.rglob('*.py'):
+                        try:
+                            with p.open('r', encoding='utf-8') as fh:
+                                for i, line in enumerate(fh, start=1):
+                                    if col in line:
+                                        occurrences.append(f"{p.relative_to(Path.cwd())}:{i}: {line.strip()}")
+                        except Exception:
+                            continue
+                    mapping[table][col] = occurrences
+        finally:
+            conn.close()
+
+        return mapping
 
 # backward compatibility
 Graph = MolecularGraph
