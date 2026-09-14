@@ -21,10 +21,6 @@ dependencies:
   - morfeus
   - dscribe
   
-  # PyTorch ecosystem (conda-forge)
-  - pytorch
-  - pyg  # PyTorch Geometric
-  
   # Database and file handling
   - sqlite  # For database operations (sqlite3 module uses this)
   

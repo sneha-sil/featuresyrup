@@ -9,22 +9,6 @@ from typing import Dict, List, Optional, Tuple, Union
 import logging
 import json
 
-# Optional imports for visualization and ML frameworks
-try:
-    import torch
-    from torch_geometric.data import Data
-    HAS_TORCH = True
-except ImportError:
-    HAS_TORCH = False
-
-try:
-    import networkx as nx
-    import plotly.graph_objects as go
-    import matplotlib.pyplot as plt
-    HAS_VISUALIZATION = True
-except ImportError:
-    HAS_VISUALIZATION = False
-
 try:
     import polars as pl
     HAS_POLARS = True
@@ -1437,85 +1421,6 @@ class MolecularGraph:
                 import pickle
                 pickle.dump(ml_data, f)
             logger.info(f"\tExported combined ML dataset to {combined_path}")
-    
-    def to_pytorch_geometric(self, labels_df: Optional[pd.DataFrame] = None) -> Optional['Data']:
-        """
-        Convert to PyTorch Geometric Data object for GNN training.
-        
-        Args:
-            labels_df: DataFrame with graph_id and target columns
-            
-        Returns:
-            Data: PyTorch Geometric data object or None if torch unavailable
-        """
-        if not HAS_TORCH:
-            logger.warning("PyTorch not available, cannot create Data object")
-            return None
-        
-        ml_data = self.get_ml_features()
-        
-        # Node features tensor
-        node_features = []
-        for node in ml_data['node_features']:
-            features = [float(v) if not np.isnan(v) else 0.0 for v in node.values()]
-            node_features.append(features)
-        x = torch.tensor(node_features, dtype=torch.float)
-        
-        # Edge connectivity and features
-        edge_indices = []
-        edge_features = []
-        for edge in ml_data['edge_features']:
-            edge_copy = edge.copy()  # Don't modify original
-            i, j = int(edge_copy.pop('atom_i', 0)), int(edge_copy.pop('atom_j', 0))
-            features = [float(v) if not np.isnan(v) else 0.0 for v in edge_copy.values()]
-            
-            # Add both directions for undirected graph
-            edge_indices.extend([[i, j], [j, i]])
-            edge_features.extend([features, features])
-        
-        edge_index = torch.tensor(edge_indices, dtype=torch.long).T if edge_indices else torch.zeros((2, 0), dtype=torch.long)
-        edge_attr = torch.tensor(edge_features, dtype=torch.float) if edge_features else torch.zeros((0, 1))
-        
-        # Graph-level features
-        graph_features = [float(v) if not np.isnan(v) else 0.0 for v in ml_data['graph_features'].values()]
-        graph_attr = torch.tensor(graph_features, dtype=torch.float) if graph_features else None
-        
-        # Target labels if provided
-        y = None
-        if labels_df is not None and self.id in labels_df['graph_id'].values:
-            target_row = labels_df[labels_df['graph_id'] == self.id]
-            if not target_row.empty:
-                y = torch.tensor([float(target_row.iloc[0]['target'])], dtype=torch.float)
-        
-        return Data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y, graph_attr=graph_attr)
-    
-    def to_networkx(self) -> Optional['nx.Graph']:
-        """
-        Convert to NetworkX graph for analysis.
-        
-        Returns:
-            nx.Graph: NetworkX graph object or None if networkx unavailable
-        """
-        if not HAS_VISUALIZATION:
-            logger.warning("NetworkX not available")
-            return None
-        
-        G = nx.Graph()
-        
-        # Add nodes with features
-        for node in self.get_node_features():
-            node_id = node.get('atom_index', 0)
-            G.add_node(node_id, **node)
-        
-        # Add edges with features  
-        for edge in self.get_edge_features():
-            i, j = edge.get('atom_i', 0), edge.get('atom_j', 0)
-            G.add_edge(i, j, **edge)
-        
-        # Add graph-level attributes
-        G.graph.update(self.get_graph_features())
-        
-        return G
         
     def summary(self) -> Dict:
         """

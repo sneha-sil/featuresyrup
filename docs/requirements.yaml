@@ -7,9 +7,6 @@ dependencies:
   - pandas
   - numpy
   - rdkit
-  - networkx
-  - matplotlib
-  - plotly
   - pyyaml
   - tqdm
   - psutil
@@ -25,7 +22,4 @@ dependencies:
   - sphinx-design
   - sphinx-copybutton
   - myst-parser
-  - pip:
-      - torch
-      - torch-geometric
 
